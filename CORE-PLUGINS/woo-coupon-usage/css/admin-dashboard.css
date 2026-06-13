@@ -1,0 +1,630 @@
+/* ===== MODERN DASHBOARD LAYOUT ===== */
+/* Scoped modern styles for the dashboard page */
+.wcusage-dashboard-modern {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.wcusage-dashboard-modern *,
+.wcusage-dashboard-modern *::before,
+.wcusage-dashboard-modern *::after {
+    box-sizing: border-box;
+}
+
+/* ===== PAGE HEADER ===== */
+.wcu-dashboard-header {
+    margin-bottom: 24px;
+}
+
+.wcu-dashboard-header h1 {
+    font-size: 26px;
+    color: #1d2327;
+    margin: 0 0 4px 0;
+}
+
+.wcu-dashboard-subtitle {
+    color: #646970;
+    font-size: 14px;
+    margin: 0;
+}
+
+.wcu-btn-dashboard-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #2271b1, #135e96);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(34,113,177,0.3);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.wcu-btn-dashboard-action:hover {
+    background: linear-gradient(135deg, #135e96, #0a4b78);
+    box-shadow: 0 4px 8px rgba(34,113,177,0.4);
+    transform: translateY(-1px);
+    color: #fff;
+    text-decoration: none;
+}
+
+.wcu-btn-dashboard-action.wcu-btn-dashboard-secondary {
+    background: #f6f7f7;
+    color: #2271b1;
+    border: 1px solid #2271b1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.wcu-btn-dashboard-action.wcu-btn-dashboard-secondary:hover {
+    background: #e8f0f8;
+    border-color: #135e96;
+    color: #135e96;
+    box-shadow: 0 2px 4px rgba(34,113,177,0.15);
+    transform: translateY(-1px);
+}
+
+/* ===== SECTION TITLE (matching reports .wcu-section-title) ===== */
+.wcusage-dashboard-modern .wcu-section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0 0 14px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wcusage-dashboard-modern .wcu-section-title i {
+    color: #2271b1;
+    font-size: 15px;
+}
+
+/* View All button inside section titles */
+.wcu-btn-view-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #50575e;
+    background: #f6f7f7;
+    border: 1px solid #d0d5dd;
+    border-radius: 5px;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.wcu-btn-view-all:hover {
+    background: #eef3ff;
+    border-color: #2271b1;
+    color: #2271b1;
+    text-decoration: none;
+}
+
+.wcu-btn-view-all i {
+    font-size: 10px;
+}
+
+/* ===== DASHBOARD CARDS (updated to match reports style) ===== */
+.wcusage-dashboard-modern .wcusage-admin-page-col {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 18px 22px 16px 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.wcusage-dashboard-modern .wcusage-admin-page-col:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-color: #d0d5dd;
+}
+
+@media screen and (max-width: 1920px) {
+    .wcusage-admin-page-col {
+        width: 100% !important;
+    }
+    .wcusage-admin-page-col a.button
+    {
+        display: inline-block;
+        text-align: center;
+        margin: 0 !important;
+    }
+}
+.wcusage-admin-page-col-section {
+    padding: 10px 0px; margin: 0; list-style: none; display: flex; flex-flow: row wrap; justify-content: space-around;
+}
+.wcusage-admin-dashboard-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: nowrap;
+}
+.wcusage-admin-dashboard-main {
+    flex: 1 1 620px;
+    min-width: 0;
+}
+.wcusage-admin-dashboard-sidebar {
+    flex: 0 0 320px;
+    max-width: 100%;
+}
+/* Drag handle and sortable styles */
+.wcusage-dashboard-section-item {
+    position: relative;
+}
+.wcusage-drag-handle {
+    color: #c3c4c7;
+    cursor: move;
+    font-size: 14px;
+    line-height: 1;
+    transition: color 0.15s ease;
+    padding: 4px 2px;
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+.wcusage-drag-handle:hover {
+    color: #2271b1;
+}
+.wcusage-dashboard-section-placeholder {
+    border: 2px dashed #c3c4c7;
+    background: #f8f9fa;
+    border-radius: 5px;
+    min-height: 40px;
+}
+.wcusage-affiliates-sidebar {
+    position: sticky;
+    top: 88px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 24px 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.wcusage-affiliates-section {
+    margin-bottom: 22px;
+}
+.wcusage-affiliates-section:last-of-type {
+    margin-bottom: 18px;
+}
+.wcusage-affiliates-section-title {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #50575e;
+}
+.wcusage-affiliates-list {
+    list-style: none;
+    margin: 0 0 8px 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.wcusage-affiliates-list-item {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 12px 14px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.wcusage-affiliates-list-item--placeholder .wcusage-affiliates-avatar-img--blur,
+.wcusage-affiliates-list-item--placeholder .wcusage-affiliates-name--blur,
+.wcusage-affiliates-list-item--placeholder .wcusage-affiliates-coupon--blur,
+.wcusage-affiliates-list-item--placeholder .wcusage-affiliates-meta--blur {
+    filter: blur(4px) brightness(0.95);
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.7;
+}
+.wcusage-affiliates-list-item:hover {
+    border-color: #d0d5dd;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.wcusage-affiliates-list-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.wcusage-affiliates-avatar-img {
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+}
+.wcusage-affiliates-rank {
+    font-weight: 700;
+    font-size: 16px;
+    color: #0b689d;
+    min-width: 32px;
+    text-align: center;
+}
+.wcusage-affiliates-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.wcusage-affiliates-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #1f2933;
+    text-decoration: none;
+}
+.wcusage-affiliates-name:hover {
+    color: #2271b1;
+}
+.wcusage-affiliates-coupon {
+    font-size: 13px;
+    color: #2271b1;
+    text-decoration: none;
+}
+.wcusage-affiliates-coupon:hover {
+    color: #005177;
+}
+.wcusage-affiliates-coupon--no-link {
+    color: #5d6b78;
+}
+.wcusage-affiliates-meta {
+    font-size: 13px;
+    color: #4c5764;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.wcusage-affiliates-meta-amount {
+    color: #0b689d;
+    font-weight: 600;
+}
+.wcusage-affiliates-empty {
+    margin: 12px 0 22px;
+    color: #67737f;
+    font-size: 13px;
+}
+.wcusage-affiliates-manage-link {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+@media screen and (max-width: 1300px) {
+    .wcusage-admin-dashboard-layout {
+        flex-wrap: wrap;
+    }
+}
+@media screen and (max-width: 1212px) {
+    .wcusage-admin-dashboard-sidebar {
+        width: 100%;
+        flex: 1 1 100%;
+    }
+}
+@media screen and (max-width: 1040px) {
+    .wcusage-admin-dashboard-layout {
+        flex-direction: column;
+    }
+    .wcusage-admin-dashboard-sidebar {
+        width: 100%;
+    }
+    .wcusage-affiliates-sidebar {
+        position: relative;
+        top: auto;
+    }
+}
+@media screen and (max-width: 782px) {
+    .wcusage-affiliates-total-number {
+        font-size: 34px;
+    }
+    .wcusage-affiliates-list-item {
+        padding: 10px 12px;
+    }
+    .wcusage-affiliates-section-title {
+        font-size: 13px;
+    }
+}
+
+/* Dashboard section pagination */
+.wcusage-pagination {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 5px;
+    margin-bottom: 10px;
+}
+.wcusage-pagination .button.button-small {
+    padding: 2px 8px;
+    line-height: 1.4;
+}
+/* Strip styling from prev/next so only the arrow icon shows */
+.wcusage-pagination .wcusage-page-prev,
+.wcusage-pagination .wcusage-page-next {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    min-width: 0;
+    height: auto;
+    line-height: 1;
+    color: inherit;
+    cursor: pointer;
+}
+.wcusage-pagination .wcusage-page-prev:hover,
+.wcusage-pagination .wcusage-page-next:hover,
+.wcusage-pagination .wcusage-page-prev:active,
+.wcusage-pagination .wcusage-page-next:active,
+.wcusage-pagination .wcusage-page-prev:focus,
+.wcusage-pagination .wcusage-page-next:focus {
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none;
+}
+.wcusage-pagination .wcusage-page-prev[disabled],
+.wcusage-pagination .wcusage-page-next[disabled] {
+    opacity: 0.35;
+    cursor: default;
+}
+.wcusage-pagination .wcusage-page-prev .dashicons,
+.wcusage-pagination .wcusage-page-next .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}
+.wcusage-pagination .wcusage-page-prev .fa,
+.wcusage-pagination .wcusage-page-next .fa,
+.wcusage-pagination .wcusage-page-prev .fas,
+.wcusage-pagination .wcusage-page-next .fas {
+    font-size: 16px;
+}
+.wcusage-page-indicator {
+    font-size: 12px;
+    color: #555d66;
+    min-width: 16px;
+    text-align: center;
+}
+/* Tighter spacing for sidebar (Latest/Top Affiliates) paginations */
+.wcusage-affiliates-section .wcusage-pagination {
+    margin-top: 2px;
+}
+
+/* ===== DASHBOARD TABLE STYLES (matching reports) ===== */
+.wcusage-dashboard-modern .wcusage-admin-table-col-head th,
+.wcusage-dashboard-modern .wcusage-admin-table-col-footer td {
+    background: #f9fafb;
+    font-size: 12px;
+    font-weight: 600;
+    color: #50575e;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.wcusage-dashboard-modern .wcusage-admin-table-col-head th,
+.wcusage-dashboard-modern .wcusage-admin-table-col-row td,
+.wcusage-dashboard-modern .wcusage-admin-table-col-footer td {
+    padding: 12px 10px;
+    border: 1px solid #f0f0f1;
+    font-size: 13px;
+}
+
+.wcusage-dashboard-modern table {
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+}
+
+/* ===== STATS RANGE TOGGLE (modernized) ===== */
+.wcusage-dashboard-modern .stats-range-toggle {
+    display: flex;
+    gap: 4px;
+    margin: 10px 0;
+    background: #f3f4f6;
+    border-radius: 5px;
+    padding: 3px;
+    width: fit-content;
+}
+
+.wcusage-dashboard-modern .stats-range-toggle a {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #50575e;
+    text-decoration: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-right: 0;
+}
+
+.wcusage-dashboard-modern .stats-range-toggle a:hover {
+    color: #2271b1;
+}
+
+.wcusage-dashboard-modern .stats-range-toggle a.active {
+    background: #fff;
+    color: #1d2327;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* ===== RESPONSIVE ===== */
+@media screen and (max-width: 782px) {
+    .wcu-stats-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .wcu-stats-header-actions {
+        width: 100%;
+    }
+    .wcu-btn-dashboard-action {
+        flex: 1;
+        justify-content: center;
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+}
+
+/* ===== STATS HEADER (title + action buttons) ===== */
+.wcu-stats-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.wcu-stats-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: -15px;
+}
+
+/* ===== DASHBOARD STAT CARDS (matching reports .wcu-card) ===== */
+.wcusage-dashboard-modern .wcu-dashboard-stats-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    margin-top: 16px;
+    margin-bottom: 10px;
+}
+
+.wcusage-dashboard-modern .wcu-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 18px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.wcusage-dashboard-modern .wcu-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-color: #d0d5dd;
+}
+
+.wcusage-dashboard-modern .wcu-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 18px;
+}
+
+.wcusage-dashboard-modern .wcu-icon-usage { background: #eef3ff; color: #2271b1; }
+.wcusage-dashboard-modern .wcu-icon-sales { background: #e6f7ee; color: #00a32a; }
+.wcusage-dashboard-modern .wcu-icon-discounts { background: #fef3e6; color: #d97706; }
+.wcusage-dashboard-modern .wcu-icon-commission { background: #e6f7ee; color: #00a32a; }
+.wcusage-dashboard-modern .wcu-icon-clicks { background: #eef3ff; color: #2271b1; }
+
+.wcusage-dashboard-modern .wcu-card-data {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.wcusage-dashboard-modern .wcu-card-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1d2327;
+    line-height: 1.2;
+}
+
+.wcusage-dashboard-modern .wcu-card-label {
+    font-size: 12px;
+    color: #646970;
+    margin-top: 2px;
+}
+
+@media only screen and (max-width: 1400px) {
+    .wcusage-dashboard-modern .wcu-dashboard-stats-row {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media only screen and (max-width: 920px) {
+    .wcusage-dashboard-modern .wcu-dashboard-stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media only screen and (max-width: 480px) {
+    .wcusage-dashboard-modern .wcu-dashboard-stats-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===== SIDEBAR OVERRIDES ===== */
+
+/* Total affiliates card – wcu-card style in sidebar */
+.wcusage-affiliates-total-card.wcu-card {
+    margin: 20px 0 18px 0;
+    padding: 18px 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.wcusage-affiliates-total-card.wcu-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-color: #d0d5dd;
+}
+
+.wcusage-dashboard-modern .wcu-icon-affiliates {
+    background: #eef3ff;
+    color: #2271b1;
+}
+
+/* No affiliates empty state */
+.wcusage-affiliates-no-affiliates {
+    margin-top: 22px;
+    margin-bottom: 18px;
+    background: #fefce8;
+    border: 1px solid #fde68a;
+    border-radius: 5px;
+    padding: 18px 22px;
+    text-align: center;
+}
+
+/* Manage / Add affiliate links */
+.wcusage-dashboard-modern .wcusage-affiliates-manage-link.button {
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    color: #374151;
+    font-size: 13px;
+    border: 1px solid #d0d5dd;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    padding: 8px 16px;
+    transition: all 0.15s ease;
+}
+
+.wcusage-dashboard-modern .wcusage-affiliates-manage-link.button:hover {
+    border-color: #2271b1;
+    color: #2271b1;
+    background: #f0f6fc;
+}
