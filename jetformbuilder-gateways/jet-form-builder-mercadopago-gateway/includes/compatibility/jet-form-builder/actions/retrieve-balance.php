@@ -1,7 +1,7 @@
 <?php
 
 
-namespace Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Actions;
+namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions;
 
 class Retrieve_Balance extends Base_Action {
 

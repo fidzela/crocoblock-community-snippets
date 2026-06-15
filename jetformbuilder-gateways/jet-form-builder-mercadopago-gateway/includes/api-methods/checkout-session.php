@@ -1,7 +1,7 @@
 <?php
 
 
-namespace Jet_FB_Stripe_Gateway\Api_Methods;
+namespace Jet_FB_Mercadopago_Gateway\Api_Methods;
 
 
 class Checkout_Session extends Base_Api_Method {

@@ -1,6 +1,6 @@
 <?php
 
-namespace Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
+namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
 
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
@@ -8,7 +8,7 @@ use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 
 
 use Jet_FB_Paypal\Resources\Subscription;
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Controller;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Controller;
 use WP_REST_Response;
 
 class Subscription_Suspend extends Rest_Api_Endpoint_Base {

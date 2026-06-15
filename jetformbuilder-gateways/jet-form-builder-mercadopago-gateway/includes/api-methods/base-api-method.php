@@ -1,16 +1,51 @@
 <?php
+/**
+ * ============================================================================
+ *  Base_Api_Method  —  CLIENTE LEGADO (JetEngine Forms). Inerte na fase 1.
+ * ============================================================================
+ *
+ *  DESTINO (cole por cima):
+ *    includes/api-methods/base-api-method.php
+ *
+ *  POR QUE EXISTE / POR QUE NÃO É USADO NO FLUXO JFB:
+ *  ---------------------------------------------------------------------------
+ *  Esta classe pertence ao caminho de compatibilidade com o **JetEngine Forms**
+ *  (o sistema de formulários ANTIGO do JetEngine, anterior ao JetFormBuilder).
+ *  O fluxo do JetFormBuilder NÃO usa esta classe — ele usa
+ *  `Compatibility\Jet_Form_Builder\Actions\Base_Action` (o cliente JSON do MP).
+ *
+ *  O QUE FOI CORRIGIDO (este arquivo havia ficado para trás no rename):
+ *  ---------------------------------------------------------------------------
+ *   - namespace  Jet_FB_Mercadopago_Gateway\Api_Methods  ->  Jet_FB_Mercadopago_Gateway\Api_Methods
+ *   - use        JetStripeGatewayCore\...           ->  JetMercadopagoGatewayCore\...
+ *   - $api_url   api.stripe.com                     ->  api.mercadopago.com
+ *
+ *  O namespace ERRADO aqui é FATAL: o autoloader do plugin só resolve
+ *  `Jet_FB_Mercadopago_Gateway\...`; uma classe declarada como
+ *  `Jet_FB_Mercadopago_Gateway\Api_Methods\Base_Api_Method` jamais é encontrada
+ *  quando referenciada (ex.: por `Compatibility\Jet_Engine\Manager`, que faz
+ *  `use Jet_FB_Mercadopago_Gateway\Api_Methods\Checkout_Session`).
+ *
+ *  Mantido o COMPORTAMENTO original (form-encoded, CurlHelper) porque é o que
+ *  o caminho JetEngine espera. Em produção MP esse caminho permanece inerte;
+ *  só seria exercido por um formulário do JetEngine Forms usando este gateway.
+ *
+ *  @package Jet_FB_Mercadopago_Gateway
+ */
 
+namespace Jet_FB_Mercadopago_Gateway\Api_Methods;
 
-namespace Jet_FB_Stripe_Gateway\Api_Methods;
+use JetMercadopagoGatewayCore\Common\CurlHelper;
 
-
-use JetStripeGatewayCore\Common\CurlHelper;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 abstract class Base_Api_Method {
 
-	private $api_url = 'https://api.stripe.com/'; // CLAUDE
+	private $api_url       = 'https://api.mercadopago.com/';
 	private $curl_instance = false;
-	protected $response = array();
+	protected $response    = array();
 	protected $token;
 
 	public function __construct( $token ) {
@@ -58,15 +93,12 @@ abstract class Base_Api_Method {
 		);
 	}
 
-
 	public function create( $fields, $endpoint = '', $post = true ) {
 		$this->get_request( $endpoint )
-		     ->set_post( $post )
-		     ->set_auth( $this->token )
-		     ->set_post_fields( http_build_query( $fields ) );
-
+			->set_post( $post )
+			->set_auth( $this->token )
+			->set_post_fields( http_build_query( $fields ) );
 
 		$this->save_response( 'create' );
 	}
-
 }

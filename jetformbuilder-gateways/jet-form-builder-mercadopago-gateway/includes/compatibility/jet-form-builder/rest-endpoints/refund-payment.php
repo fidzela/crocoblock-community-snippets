@@ -1,6 +1,6 @@
 <?php
 
-namespace Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
+namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
 
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_Form_Builder\Exceptions\Gateway_Exception;
@@ -11,7 +11,7 @@ use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_FB_Paypal\QueryViews\PaymentsWithSales;
 use Jet_FB_Paypal\Resources\Subscription;
 use JFB_Modules\Gateways\Module;
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Controller;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Controller;
 use WP_REST_Response;
 
 class Refund_Payment extends Rest_Api_Endpoint_Base {

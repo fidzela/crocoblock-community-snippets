@@ -1,13 +1,13 @@
 <?php
 
 
-namespace Jet_FB_Stripe_Gateway\Compatibility\Jet_Engine;
+namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Engine;
 
 
 use Jet_Engine\Gateways\PayPal;
-use Jet_FB_Stripe_Gateway\Api_Methods\Checkout_Session;
-use Jet_FB_Stripe_Gateway\Compatibility\Base_Stripe;
-use Jet_FB_Stripe_Gateway\Compatibility\Compatibility_Trait;
+use Jet_FB_Mercadopago_Gateway\Api_Methods\Checkout_Session;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Base_Stripe;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Compatibility_Trait;
 
 class Manager {
 

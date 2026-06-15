@@ -1,14 +1,14 @@
 <?php
 
 
-namespace Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Logic;
+namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Logic;
 
 use Jet_FB_Paypal\DbModels\RecurringCyclesModel;
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Checkout_Session;
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Price;
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Subscription_Connector;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Checkout_Session;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Price;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Subscription_Connector;
 
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Webhook_Manager;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Webhook_Manager;
 use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Exceptions\Handler_Exception;
 use Jet_Form_Builder\Exceptions\Query_Builder_Exception;

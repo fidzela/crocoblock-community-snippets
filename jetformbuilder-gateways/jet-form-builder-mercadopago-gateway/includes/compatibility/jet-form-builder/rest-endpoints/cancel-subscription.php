@@ -1,13 +1,13 @@
 <?php
 
-namespace Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
+namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
 
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
 use Jet_FB_Paypal\Resources\Subscription;
 use Jet_FB_Paypal\Logic\SubscribeNow;
 use Jet_Form_Builder\Exceptions\Gateway_Exception;
-use Jet_FB_Stripe_Gateway\Compatibility\Jet_Form_Builder\Controller;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Controller;
 
 class Cancel_Subscription extends Rest_Api_Endpoint_Base {
 
