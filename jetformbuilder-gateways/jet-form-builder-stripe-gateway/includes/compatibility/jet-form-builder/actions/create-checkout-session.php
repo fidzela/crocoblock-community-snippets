@@ -20,7 +20,7 @@ class Create_Checkout_Session extends Base_Action {
 	}
 
 	public function action_endpoint() {
-		return 'v1/checkout/sessions';
+		return 'checkout/preferences';
 	}
 
 	/**
