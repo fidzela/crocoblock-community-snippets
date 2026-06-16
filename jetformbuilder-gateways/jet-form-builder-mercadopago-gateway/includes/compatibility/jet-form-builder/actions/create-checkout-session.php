@@ -41,6 +41,8 @@
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions;
 
+use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -286,6 +288,14 @@ class Create_Checkout_Session extends Base_Action {
 				'installments'           => $this->installments,
 			),
 		);
+
+		// Webhook (rede de segurança / fase 2 Pix). O MP exige HTTPS público;
+		// em http/localhost OMITIMOS para NÃO quebrar a criação da preference.
+		$notification_url = WebhookConfig::notification_url();
+
+		if ( '' !== $notification_url && 0 === strpos( $notification_url, 'https://' ) ) {
+			$preference['notification_url'] = $notification_url;
+		}
 
 		/**
 		 * Permite ajustar a Preference inteira antes do envio

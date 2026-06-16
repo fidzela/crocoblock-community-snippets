@@ -13,10 +13,10 @@ class MercadopagoWebHookGlobal extends MercadopagoWebHookBase {
 	}
 
 	public function run_event( array $event_data ): WP_REST_Response {
-		$event_type = $event_data['type'] ?? 'unknown';
+		$type    = (string) ( $event_data['type'] ?? '' );
+		$data_id = (string) ( $event_data['data_id'] ?? '' );
+		$raw     = (array) ( $event_data['raw'] ?? array() );
 
-		$dispatcher = new Dispatcher();
-
-		return $dispatcher->dispatch( $event_type, $event_data );
+		return ( new Dispatcher() )->dispatch( $type, $data_id, $raw );
 	}
 }
