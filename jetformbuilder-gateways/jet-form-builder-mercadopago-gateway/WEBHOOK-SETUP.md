@@ -27,8 +27,8 @@ recompilar, as credenciais do webhook são lidas de constantes/filtros.
 define( 'JFB_MP_ACCESS_TOKEN', 'APP_USR-xxxxxxxx...' );
 
 // "Assinatura secreta" do painel de Webhooks (NÃO é o Access Token) — valida
-// o header x-signature. Sem ela, a validação é PULADA (com aviso no log);
-// o GET autenticado continua sendo a fonte de verdade do pagamento.
+// o header x-signature. OBRIGATÓRIA: sem ela, o webhook é RECUSADO (401),
+// porque não há como provar que a notificação é do Mercado Pago (fail-closed).
 define( 'JFB_MP_WEBHOOK_SECRET', 'sua-assinatura-secreta' );
 ```
 
@@ -65,7 +65,33 @@ add_filter( 'jet-form-builder/mercadopago/notification-url',     fn( $u ) => $u 
 Respostas: **200** para tratado/ignorado; **401** assinatura inválida;
 **500** apenas em erro transitório de API (para o MP reenviar).
 
-## 5. Teste
+## 5. Segurança (por que o endpoint é público e mesmo assim seguro)
+
+Um webhook é, **por necessidade**, um endpoint **sem login do WordPress**: os
+servidores do Mercado Pago não têm como autenticar numa sessão do WP. Isso vale
+para **todo** gateway (Stripe, PayPal e o plugin oficial do MP no WooCommerce).
+**Público ≠ inseguro** — a autenticação é **criptográfica**, não por login:
+
+1. **`x-signature` (HMAC-SHA256)** — só quem tem a Assinatura secreta (o MP)
+   gera assinatura válida. Sem ela → **401**. É **fail-closed**: sem
+   `JFB_MP_WEBHOOK_SECRET`, recusa tudo.
+2. **`GET /v1/payments/{id}`** com o Access Token privado — ninguém forja um
+   pagamento "aprovado".
+3. **Anti-fraude de valor + idempotência.**
+
+**Teste você mesmo:** um POST sem assinatura no endpoint → **401**. Segurança OK.
+
+### Plugins de segurança que bloqueiam a REST (ASE, Wordfence, etc.)
+Se você usa algo que **bloqueia a REST API para não-autenticados** (ex.: ASE →
+"Disable REST API for unauthenticated users"), ele barra o webhook **antes** de
+chegar no nosso código (401 no Simulador). **Não desligue a proteção do site
+inteiro.** O certo:
+- **Mantenha** a proteção global ligada, e
+- **Libere só a rota** `jfb-mercadopago/v1/webhook` na allowlist do plugin.
+
+Não é "bypass inseguro": essa rota se **autoprotege** com a assinatura HMAC.
+
+## 6. Teste
 
 ### Credenciais: `TEST-` (teste) vs `APP_USR-` (produção)
 - Para **testar**, use o Access Token **`TEST-...`** e a Assinatura secreta do

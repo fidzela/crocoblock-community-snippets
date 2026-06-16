@@ -40,8 +40,8 @@ class WebhookConfig {
 	const ROUTE_PATH      = '/webhook';
 
 	/**
-	 * Assinatura secreta do painel (valida x-signature). Vazia => validação
-	 * desligada (o GET autenticado segue sendo a fonte de verdade do pagamento).
+	 * Assinatura secreta do painel (valida x-signature). Vazia => webhook
+	 * RECUSADO (401, fail-closed); configure JFB_MP_WEBHOOK_SECRET.
 	 *
 	 * @return string
 	 */

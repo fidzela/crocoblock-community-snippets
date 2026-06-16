@@ -18,8 +18,9 @@
  *    usando hash_equals (comparação timing-safe).
  *
  *  O segredo é a "Assinatura secreta" do painel de Webhooks — NÃO o Access
- *  Token. Sem segredo configurado, is_valid() retorna true (apenas registra um
- *  aviso): a verificação real do pagamento acontece no GET /v1/payments/{id}.
+ *  Token. SEGURO POR PADRÃO (fail-closed): sem segredo configurado, is_valid()
+ *  RECUSA (401), porque não há como provar a origem da notificação. Existe um
+ *  filtro de override (allow-unsigned), mas é desencorajado.
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
@@ -44,10 +45,18 @@ class SignatureValidator {
 	public static function is_valid( WP_REST_Request $request, string $data_id ): bool {
 		$secret = WebhookConfig::webhook_secret();
 
-		// Sem segredo: não há como validar. O GET autenticado em
-		// PaymentNotification continua sendo a verdade — seguimos, mas avisamos.
+		// SEGURO POR PADRÃO (fail-closed): sem a Assinatura secreta NÃO há como
+		// provar que a notificação é mesmo do Mercado Pago — então RECUSAMOS.
+		// A postura correta para um endpoint público é: na dúvida, 401. Configure
+		// JFB_MP_WEBHOOK_SECRET. O override existe só via filtro e NÃO é recomendado.
 		if ( '' === $secret ) {
-			WebhookConfig::log( 'Webhook secret not configured; skipping x-signature validation.' );
+			if ( ! (bool) apply_filters( 'jet-form-builder/mercadopago/allow-unsigned-webhook', false ) ) {
+				WebhookConfig::log( 'RECUSADO: JFB_MP_WEBHOOK_SECRET nao configurado; assinatura nao pode ser validada.' );
+
+				return false;
+			}
+
+			WebhookConfig::log( 'AVISO: processando webhook SEM validar assinatura (allow-unsigned ligado).' );
 
 			return true;
 		}
