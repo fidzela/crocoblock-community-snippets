@@ -21,8 +21,14 @@ class Dispatcher {
 			case 'payment':
 				return ( new PaymentNotification() )->handle( $data_id );
 
-			// Fase 3 (assinaturas): subscription_preapproval /
-			// subscription_authorized_payment / merchant_order entram aqui.
+			// Assinaturas: status da assinatura (ativa/suspende/cancela).
+			case 'subscription_preapproval':
+				return ( new PreapprovalNotification() )->handle( $data_id );
+
+			// Assinaturas: cobranças recorrentes geradas pela assinatura.
+			case 'subscription_authorized_payment':
+				return ( new AuthorizedPaymentNotification() )->handle( $data_id );
+
 			default:
 				return new WP_REST_Response( array( 'message' => 'Unhandled topic: ' . $event_type ), 200 );
 		}
