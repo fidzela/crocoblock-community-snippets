@@ -6,13 +6,13 @@ namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Engine;
 
 use Jet_Engine\Gateways\PayPal;
 use Jet_FB_Mercadopago_Gateway\Api_Methods\Checkout_Session;
-use Jet_FB_Mercadopago_Gateway\Compatibility\Base_Stripe;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Base_Mercadopago;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Compatibility_Trait;
 
 class Manager {
 
 	use Compatibility_Trait;
-	use Base_Stripe;
+	use Base_Mercadopago;
 
 	const GATEWAY_META_KEY = '_jet_gateway_data';
 
