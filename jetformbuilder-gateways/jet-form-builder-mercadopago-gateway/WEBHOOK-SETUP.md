@@ -14,10 +14,20 @@ Esta URL já é enviada **automaticamente** no campo `notification_url` de cada
 preference (só em sites **HTTPS** — em `http`/localhost é omitida para não
 quebrar a criação da preference).
 
-## 2. Credenciais (via constante em `wp-config.php` ou filtro)
+## 2. Credenciais
 
-O painel de configuração do gateway é um app Vue compilado; para evitar
-recompilar, as credenciais do webhook são lidas de constantes/filtros.
+**Forma recomendada — pela UI do JetFormBuilder:** em
+**wp-admin → JetFormBuilder → Settings → Payment Gateways → Mercado Pago**
+(credenciais **globais**), preencha **Access Token** (o mesmo do pay-now;
+`TEST-...` em teste) e **Webhook Secret Signature** (a "Assinatura secreta" do
+painel de Webhooks do MP).
+
+> ⚠️ O webhook só enxerga as credenciais **GLOBAIS** (não há form ativo na
+> notificação). Configure no nível global, não apenas por formulário.
+
+**Forma alternativa — constante no `wp-config.php`** (tem precedência sobre a
+UI; útil para separar ambientes/versionar). As constantes/filtros abaixo
+continuam valendo como override:
 
 ```php
 // wp-config.php

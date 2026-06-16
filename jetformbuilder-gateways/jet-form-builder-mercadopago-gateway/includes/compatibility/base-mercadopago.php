@@ -82,8 +82,10 @@ trait Base_Mercadopago {
 
 		return array(
 			'public'       => array(
-				// Não usado no Checkout Pro (redirect). Reservado p/ Pix/Brick (fase 2).
-				'label'    => __( 'Public Key (optional)', 'jet-form-builder' ),
+				// REAPROVEITADO p/ a Assinatura Secreta do Webhook: o Checkout Pro
+				// (fase 1) não usa Public Key, então este slot guarda o segredo que
+				// valida o x-signature. WebhookConfig lê esta chave ('public').
+				'label'    => __( 'Webhook Secret Signature', 'jet-form-builder' ),
 				'required' => false,
 			),
 			'secret'       => array(

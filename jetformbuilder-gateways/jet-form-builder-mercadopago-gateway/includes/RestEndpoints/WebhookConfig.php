@@ -52,6 +52,13 @@ class WebhookConfig {
 			$secret = (string) JFB_MP_WEBHOOK_SECRET;
 		}
 
+		// Fallback: campo "Webhook Secret Signature" das credenciais GLOBAIS do
+		// gateway (chave 'public', reaproveitada) — configura pela UI do JFB em
+		// vez do wp-config.
+		if ( '' === $secret ) {
+			$secret = (string) ( self::global_settings()['public'] ?? '' );
+		}
+
 		return (string) apply_filters( 'jet-form-builder/mercadopago/webhook-secret', $secret );
 	}
 
@@ -65,6 +72,12 @@ class WebhookConfig {
 
 		if ( defined( 'JFB_MP_ACCESS_TOKEN' ) ) {
 			$token = (string) JFB_MP_ACCESS_TOKEN;
+		}
+
+		// Fallback: campo "Access Token" das credenciais GLOBAIS do gateway
+		// (chave 'secret') — o MESMO Access Token que o pay-now usa.
+		if ( '' === $token ) {
+			$token = (string) ( self::global_settings()['secret'] ?? '' );
 		}
 
 		return (string) apply_filters( 'jet-form-builder/mercadopago/webhook-access-token', $token );
@@ -84,6 +97,23 @@ class WebhookConfig {
 		);
 
 		return (string) apply_filters( 'jet-form-builder/mercadopago/notification-url', $url );
+	}
+
+	/**
+	 * Credenciais GLOBAIS do gateway (wp-admin → JetFormBuilder → Settings →
+	 * Payment Gateways). No webhook NÃO há form ativo, então só as globais
+	 * servem. Retorna [] se o módulo de gateways não estiver disponível.
+	 *
+	 * @return array
+	 */
+	private static function global_settings(): array {
+		if ( ! class_exists( '\JFB_Modules\Gateways\Module' ) ) {
+			return array();
+		}
+
+		$settings = \JFB_Modules\Gateways\Module::instance()->get_global_settings( 'mercadopago' );
+
+		return is_array( $settings ) ? $settings : array();
 	}
 
 	/**
