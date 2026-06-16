@@ -275,10 +275,80 @@
 <a name="9"></a>
 ## 9. Decisões em aberto + critérios de aceite
 
-### Decisões (resolver no início da Fase 2)
-- **D1 — Plano:** assinatura **com `preapproval_plan`** (planos reutilizáveis, "Refresh Plans") ou **avulsa** (`auto_recurring` inline, mais simples)? *Recomendação: começar avulsa (mais simples, sem gerenciar planos), e adicionar plano depois.*
-- **D2 — JetEngine compat:** corrigir `jet-engine/manager.php` (stripe_* → mercadopago_*) ou **remover** a compatibilidade com JetEngine Forms se o projeto só usa JetFormBuilder? *Recomendação: confirmar uso; se não usa JetEngine Forms para pagamento, remover reduz superfície de bug.*
-- **D3 — Disparo de sucesso no webhook (pendência da Fase 1):** o hook `do_action('jet-form-builder/mercadopago/payment-approved')` ainda **não dispara** o `Gateway_Success_Event` no pay-now via webhook (só o retorno do navegador dispara). Para Pix (futuro) e aba-fechada, será necessário — o padrão é o `SubscriptionUtils::execute_event_for_subscription` adaptado para pagamento (via `Payment_To_Record`). *Pode entrar como item da Fase 2 ou ficar para o Pix.*
+### Decisões — RESOLVIDAS pelo dono do projeto (2026-06-16)
+
+> Premissa-mãe (do dono): **replicar o que o addon Stripe faz HOJE**, mantendo o
+> pagamento dentro do **CORE** do JetFormBuilder (a row aparece em
+> *JetFormBuilder → Payments* e é acessível por dashboard, listing, queries,
+> Profile Builder, users, relations). "Stripe é Stripe e Mercado Livre é Mercado
+> Livre": onde algo é exclusivo do Stripe, **manter inerte / sem conflito**,
+> documentando no arquivo o porquê de ter sido removido/comentado.
+
+- **D1 — Modelo de assinatura → RESOLVIDA: usar `preapproval_plan` (com plano).**
+  Como o Stripe **NÃO cria** Product/Price em runtime — ele usa **Prices
+  recorrentes pré-existentes**, que o admin escolhe no editor (campo manual
+  `plan_manual` ou via field `plan_field`) e atualiza no botão **"Refresh Plans
+  From Stripe"** (`/v1/prices/search?type=recurring`) — o modelo do Mercado Pago
+  que **mais se assemelha** é a **Preapproval COM Plano** (`preapproval_plan`):
+  o plano é o análogo do "Price recorrente". Isto **sobrepõe** a recomendação
+  antiga ("começar avulsa"): para *replicar o Stripe*, vamos de plano. Bônus: o
+  editor MP **já está scaffoldado** para isto ("Refresh Plans From Mercadopago"
+  + `fetch-mercadopago-plans.php` → `preapproval_plan/search`). Mapa:
+  Stripe `Price (recurring)` → MP `preapproval_plan`;
+  Stripe `Checkout Session(mode=subscription)` → MP `POST /preapproval`
+  (`preapproval_plan_id`) → `init_point`; demais transições por webhook
+  (`subscription_preapproval` / `subscription_authorized_payment`).
+- **D2 — JetEngine compat → RESOLVIDA: NÃO portar; neutralizar e documentar.**
+  O projeto usa **apenas JetFormBuilder**. `jet-engine/manager.php` (caminho
+  JetEngine Forms, com `stripe_*`) deve virar **inerte** (sem conflito), mantendo
+  o arquivo **com um comentário explicando** por que o código foi removido/
+  comentado. Mesma regra para qualquer arquivo que seja exclusivo do Stripe.
+- **D3 — Disparo de sucesso no webhook (pendência da Fase 1) → RESOLVIDA e
+  IMPLEMENTADA nesta sessão.** É a **fundação** da Fase 2. Agora o pay-now
+  dispara o `Gateway_Success_Event` (ações do form) também **via webhook** (aba
+  fechada / Pix futuro), não só no retorno do navegador. Ver "Progresso" abaixo.
+
+### Progresso da Fase 2 (sessão 2026-06-16, branch `claude/sleepy-cray-kgcow0`)
+
+**✅ Etapa 2.0 (parcial) — Blindagem anti-fatal:**
+- `actions/retrieve-price.php` e `actions/expire-checkout-session.php`:
+  `action_endpoint()` agora declara `: string` (casa com o abstract
+  `Base_Action`), eliminando o *Fatal error* de assinatura incompatível no
+  autoload sob PHP 8 (risco #5). Auditadas TODAS as subclasses de `Base_Action`
+  (as demais já estavam corretas).
+
+**✅ D3 — Fulfillment via webhook (a FUNDAÇÃO):**
+- Novo `RestEndpoints/WebhookEvents/PaymentFulfillment.php`: escuta o hook
+  `jet-form-builder/mercadopago/payment-approved` e **re-executa o
+  `Gateway_Success_Event`** fora do contexto de submissão — espelhando
+  `SubscriptionUtils::execute_event_for_subscription`, mas indexado pelo
+  **pagamento** via o core `Record_By_Payment` (tabela `payment_to_record`).
+  Reidrata usuário + form_id + referrer + `Tools::apply_context()` + opções de
+  gateway, roda as ações e `Tools::update_record()`.
+- `PaymentNotification::confirm()` agora faz a transição **CREATED → COMPLETED
+  ATÔMICA** (UPDATE condicional `WHERE id=X AND status='CREATED'`; 0 linhas →
+  `Sql_Exception`). Só o **vencedor** da corrida emite o hook ⇒
+  `Gateway_Success_Event` dispara **no-máximo-uma-vez** por pagamento, fechando o
+  TOCTOU entre webhook e retorno do navegador. (O caminho do navegador **não foi
+  tocado** — não regride o fluxo já validado.)
+- Listener registrado em `Compatibility\Jet_Form_Builder\Manager::__construct()`
+  (carrega em toda requisição, inclusive REST/webhook).
+
+**⚠️ Edge conhecido (não-regressão; pré-existente):** se o **webhook** efetiva
+ANTES do retorno do navegador, o `process_after()` do pay-now vê status ≠
+`CREATED` e cai no `Gateway_Failed_Event` (mensagem de falha ao usuário), embora
+as ações de sucesso já tenham rodado via webhook. Antes desta sessão esse caso
+**nem rodava as ações**; agora roda (uma vez). Refino opcional: sobrescrever
+`process_after()/process_status()` no `pay-now-logic` para tratar "já COMPLETED"
+como sucesso-sem-redisparo. *Fica como follow-up.*
+
+**⏭️ Próximas etapas (nesta ordem):** (1) erradicação do Stripe segura — D2
+(neutralizar `jet-engine/manager.php`), neutralizar `webhook-manager.php`
+(api.stripe.com inerte), text domains; (2) reescrita das assinaturas MP-native
+no modelo **plano** (D1): `Create_Preapproval`, handlers de webhook
+`subscription_preapproval` / `subscription_authorized_payment`, cancel/suspend/
+reactivate; (3) **refund por ÚLTIMO**, após discussão de segurança (decisão do
+dono) — manter o que o Stripe faz como base, mas reforçar.
 
 ### Critérios de aceite (Definition of Done — Fase 2)
 - [ ] `JFB_MP_SUBSCRIPTIONS_ENABLED=true` **ativa sem fatal** e sem quebrar a REST.

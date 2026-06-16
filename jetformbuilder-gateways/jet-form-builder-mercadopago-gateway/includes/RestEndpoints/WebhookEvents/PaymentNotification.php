@@ -37,6 +37,7 @@ namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Checkout_Session;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
+use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Query_Views\Payment_With_Record_View;
@@ -132,9 +133,9 @@ class PaymentNotification {
 			return self::ok( 'amount mismatch' );
 		}
 
-		$this->confirm( $payment, $row );
+		$confirmed = $this->confirm( $payment, $row );
 
-		return self::ok( 'completed' );
+		return self::ok( $confirmed ? 'completed' : 'already completed' );
 	}
 
 	/**
@@ -182,31 +183,49 @@ class PaymentNotification {
 	}
 
 	/**
-	 * Marca COMPLETED (idempotente), enriquece o pagador e dispara o hook de
-	 * extensão para a fulfillment via webhook.
+	 * Efetiva o pagamento de forma ATÔMICA e idempotente, e — somente se ESTE
+	 * caminho venceu a transição — enriquece o pagador e dispara a fulfillment.
+	 *
+	 * A transição CREATED -> COMPLETED é um UPDATE CONDICIONAL
+	 * (`WHERE id = X AND status = 'CREATED'`). O core lança Sql_Exception quando
+	 * 0 linhas casam (i.e., o retorno do navegador — ou outra entrega do webhook
+	 * — já confirmou). Assim, o `do_action` (e logo o Gateway_Success_Event via
+	 * PaymentFulfillment) dispara NO MÁXIMO UMA VEZ por pagamento, fechando a
+	 * janela de corrida entre webhook e retorno do navegador (TOCTOU).
 	 *
 	 * @param array $payment
 	 * @param array $row
 	 *
-	 * @return void
+	 * @return bool true se este caminho efetivou o pagamento; false se já estava.
 	 */
-	private function confirm( array $payment, array $row ) {
-		( new Payment_Model() )->update(
-			array( 'status' => 'COMPLETED' ),
-			array( 'id' => $row['id'] )
-		);
+	private function confirm( array $payment, array $row ): bool {
+		try {
+			( new Payment_Model() )->update(
+				array( 'status' => 'COMPLETED' ),
+				array(
+					'id'     => $row['id'],
+					'status' => 'CREATED',
+				)
+			);
+		} catch ( Sql_Exception $e ) {
+			// 0 linhas afetadas => outro caminho já confirmou. No-op idempotente.
+			return false;
+		}
 
 		$this->save_payer( $payment, $row );
 
 		/**
-		 * Pagamento confirmado VIA WEBHOOK (aba fechada agora; Pix/boleto na
-		 * fase 2). Ponto de plugue para o PASSO 2 disparar o Gateway_Success_Event
-		 * e rodar as ações pós-pagamento do form fora do contexto de submissão.
+		 * Pagamento confirmado VIA WEBHOOK (aba fechada; Pix/assíncrono na fase
+		 * futura). PaymentFulfillment escuta este hook e roda as ações do form
+		 * (Gateway_Success_Event) fora do contexto de submissão. Disparado só
+		 * pelo vencedor da transição atômica acima => no-máximo-uma-vez.
 		 *
 		 * @param array $payment Objeto do pagamento (GET /v1/payments/{id}).
 		 * @param array $row     Linha do Payment_With_Record_View (pagamento+record).
 		 */
 		do_action( 'jet-form-builder/mercadopago/payment-approved', $payment, $row );
+
+		return true;
 	}
 
 	/**
