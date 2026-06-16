@@ -438,7 +438,7 @@ __webpack_require__.r(__webpack_exports__);
 var __ = wp.i18n.__;
 var label = {
   public: __('Public Key', 'jet-form-builder'),
-  secret: __('Secret Key', 'jet-form-builder')
+  secret: __('Access Token', 'jet-form-builder')
 };
 var help = {};
 

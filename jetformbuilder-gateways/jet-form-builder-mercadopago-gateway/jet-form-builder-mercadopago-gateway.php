@@ -48,7 +48,6 @@ add_action( 'plugins_loaded', function () {
 	require JET_FB_MERCADOPAGO_GATEWAY_PATH . 'includes/plugin.php';
 }, 100 );
 
-/*add_action( 'rest_api_init', function () {
-*	( new Jet_FB_Mercadopago_Gateway\RestEndpoints\MercadopagoWebHookGlobal() )->register_endpoint();
-*} );
-*/
+add_action( 'rest_api_init', function () {
+	( new Jet_FB_Mercadopago_Gateway\RestEndpoints\MercadopagoWebHookGlobal() )->register_endpoint();
+} );

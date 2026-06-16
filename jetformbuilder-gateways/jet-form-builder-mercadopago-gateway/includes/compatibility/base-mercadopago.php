@@ -82,7 +82,9 @@ trait Base_Mercadopago {
 
 		return array(
 			'public'       => array(
-				// Não usado no Checkout Pro (redirect). Reservado p/ Pix/Brick (fase 2).
+				// Public Key do Mercado Pago. NÃO é usada no Checkout Pro (fase 1);
+				// reservada para Pix/Bricks (fase 2). O segredo do webhook NÃO vai
+				// aqui — ele é o JFB_MP_WEBHOOK_SECRET (wp-config), mais seguro.
 				'label'    => __( 'Public Key (optional)', 'jet-form-builder' ),
 				'required' => false,
 			),

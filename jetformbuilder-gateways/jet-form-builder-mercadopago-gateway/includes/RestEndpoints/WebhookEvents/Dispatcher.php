@@ -6,27 +6,25 @@ use WP_REST_Response;
 
 class Dispatcher {
 
-	public function dispatch(string $event_type, array $payload ): WP_REST_Response {
+	/**
+	 * Roteia por TÓPICO do Mercado Pago (não por nome de evento do Stripe).
+	 *
+	 * @param string $event_type Tópico normalizado (ex.: 'payment').
+	 * @param string $data_id    Id do recurso (data.id) a consultar na API.
+	 * @param array  $payload    Corpo bruto do webhook (debug / fases futuras).
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function dispatch( string $event_type, string $data_id = '', array $payload = array() ): WP_REST_Response {
 		switch ( $event_type ) {
 
-			case 'checkout.session.completed':
-				return ( new CheckoutSessionCompleted() )->handle( $payload );
+			case 'payment':
+				return ( new PaymentNotification() )->handle( $data_id );
 
-			case 'invoice.paid':
-				return ( new InvoicePaid() )->handle( $payload );
-
-			case 'invoice.payment_failed':
-				return ( new InvoicePaymentFailed() )->handle( $payload );
-
-
-			case 'customer.subscription.updated':
-				return ( new CustomerSubscriptionUpdated() )->handle( $payload );
-
-			case 'customer.subscription.deleted':
-				return ( new CustomerSubscriptionCancelled() )->handle( $payload );
-
+			// Fase 3 (assinaturas): subscription_preapproval /
+			// subscription_authorized_payment / merchant_order entram aqui.
 			default:
-				return new WP_REST_Response( [ 'message' => 'Unhandled event' ], 200 );
+				return new WP_REST_Response( array( 'message' => 'Unhandled topic: ' . $event_type ), 200 );
 		}
 	}
 }

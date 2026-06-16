@@ -387,7 +387,11 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	public function save_resource( $resource ) {
 		$payment_row = array(
 			'transaction_id'         => $resource['id'],
-			'initial_transaction_id' => $resource['id'],
+			// Reaproveita initial_transaction_id para guardar o external_reference
+			// — a CHAVE DE RECONCILIAÇÃO do webhook -> linha. O MP o devolve ecoado
+			// na resposta da preference. Em pay-now não há renovação, então o campo
+			// está livre. Fallback defensivo para o id da preference.
+			'initial_transaction_id' => $resource['external_reference'] ?? $resource['id'],
 			'form_id'                => jet_fb_handler()->form_id,
 			'user_id'                => get_current_user_id(),
 			'gateway_id'             => jet_fb_gateway_current()->get_id(),
