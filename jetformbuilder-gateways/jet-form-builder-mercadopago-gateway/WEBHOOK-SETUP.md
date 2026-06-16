@@ -14,20 +14,20 @@ Esta URL já é enviada **automaticamente** no campo `notification_url` de cada
 preference (só em sites **HTTPS** — em `http`/localhost é omitida para não
 quebrar a criação da preference).
 
-## 2. Credenciais
+## 2. Credenciais (e onde cada uma fica, por segurança)
 
-**Forma recomendada — pela UI do JetFormBuilder:** em
-**wp-admin → JetFormBuilder → Settings → Payment Gateways → Mercado Pago**
-(credenciais **globais**), preencha **Access Token** (o mesmo do pay-now;
-`TEST-...` em teste) e **Webhook Secret Signature** (a "Assinatura secreta" do
-painel de Webhooks do MP).
+São DUAS credenciais e elas ficam em lugares diferentes de propósito:
 
-> ⚠️ O webhook só enxerga as credenciais **GLOBAIS** (não há form ativo na
-> notificação). Configure no nível global, não apenas por formulário.
+**Access Token → UI do JetFormBuilder** (ou constante). O pay-now já precisa
+dele no campo do gateway, então ele está no banco de qualquer jeito; o webhook
+reaproveita o MESMO. Em **JetFormBuilder → Settings → Payment Gateways →
+Mercado Pago → "Access Token"** (GLOBAL), `TEST-...` / `APP_USR-...`.
 
-**Forma alternativa — constante no `wp-config.php`** (tem precedência sobre a
-UI; útil para separar ambientes/versionar). As constantes/filtros abaixo
-continuam valendo como override:
+> ⚠️ O webhook só lê as credenciais GLOBAIS (não há form ativo na notificação).
+
+**Webhook Secret Signature → wp-config** (mais seguro: fica FORA do banco, é
+webhook-only). É a "Assinatura secreta" do painel de Webhooks do MP. As
+constantes/filtros abaixo são a forma recomendada:
 
 ```php
 // wp-config.php

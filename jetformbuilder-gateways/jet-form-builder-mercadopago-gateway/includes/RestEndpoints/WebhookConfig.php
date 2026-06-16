@@ -52,13 +52,9 @@ class WebhookConfig {
 			$secret = (string) JFB_MP_WEBHOOK_SECRET;
 		}
 
-		// Fallback: campo "Webhook Secret Signature" das credenciais GLOBAIS do
-		// gateway (chave 'public', reaproveitada) — configura pela UI do JFB em
-		// vez do wp-config.
-		if ( '' === $secret ) {
-			$secret = (string) ( self::global_settings()['public'] ?? '' );
-		}
-
+		// O segredo do webhook fica FORA do banco (wp-config), mais seguro: é
+		// webhook-only e não precisa estar exposto na UI/DB. Use a constante
+		// JFB_MP_WEBHOOK_SECRET ou o filtro abaixo.
 		return (string) apply_filters( 'jet-form-builder/mercadopago/webhook-secret', $secret );
 	}
 

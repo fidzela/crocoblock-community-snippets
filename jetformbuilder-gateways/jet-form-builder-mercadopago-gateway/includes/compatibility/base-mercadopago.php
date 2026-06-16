@@ -82,10 +82,10 @@ trait Base_Mercadopago {
 
 		return array(
 			'public'       => array(
-				// REAPROVEITADO p/ a Assinatura Secreta do Webhook: o Checkout Pro
-				// (fase 1) não usa Public Key, então este slot guarda o segredo que
-				// valida o x-signature. WebhookConfig lê esta chave ('public').
-				'label'    => __( 'Webhook Secret Signature', 'jet-form-builder' ),
+				// Public Key do Mercado Pago. NÃO é usada no Checkout Pro (fase 1);
+				// reservada para Pix/Bricks (fase 2). O segredo do webhook NÃO vai
+				// aqui — ele é o JFB_MP_WEBHOOK_SECRET (wp-config), mais seguro.
+				'label'    => __( 'Public Key (optional)', 'jet-form-builder' ),
 				'required' => false,
 			),
 			'secret'       => array(
