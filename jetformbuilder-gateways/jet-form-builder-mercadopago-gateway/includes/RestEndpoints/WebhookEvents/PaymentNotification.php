@@ -77,16 +77,26 @@ class PaymentNotification {
 			->send_request();
 
 		if ( isset( $payment['error'] ) ) {
+			$code = $payment['error']['code'] ?? 0;
+
 			WebhookConfig::log(
 				'Payment lookup failed.',
 				array(
 					'data_id' => $data_id,
+					'code'    => $code,
 					'error'   => $payment['error']['message'] ?? '',
 				)
 			);
 
-			// Erro transitório de API -> 500 para o MP reenviar.
-			return new WP_REST_Response( array( 'message' => 'lookup failed' ), 500 );
+			// Erro TRANSITÓRIO (falha de conexão/transporte, ou 5xx do MP) -> 500
+			// para o MP REENVIAR. Erro DEFINITIVO (404/401/400: id inexistente,
+			// token de outra conta) -> 200, sem reenvio. Isso inclui o id FALSO
+			// (123456) do Simulador do painel, que SEMPRE dá 404 na consulta.
+			$is_transient = ( 'http_error' === $code ) || ( is_numeric( $code ) && (int) $code >= 500 );
+
+			return $is_transient
+				? new WP_REST_Response( array( 'message' => 'lookup failed (retry)' ), 500 )
+				: self::ok( 'payment not found' );
 		}
 
 		$row = $this->find_row( (string) ( $payment['external_reference'] ?? '' ) );

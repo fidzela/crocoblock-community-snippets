@@ -65,12 +65,34 @@ add_filter( 'jet-form-builder/mercadopago/notification-url',     fn( $u ) => $u 
 Respostas: **200** para tratado/ignorado; **401** assinatura inválida;
 **500** apenas em erro transitório de API (para o MP reenviar).
 
-## 5. Teste (modo produção)
+## 5. Teste
 
-Use o **Simulador de webhooks** do painel do Mercado Pago (envia uma
-notificação real **assinada** ao endpoint) e/ou credenciais **TEST-** com
-cartões de teste. Ative `WP_DEBUG` para ver os logs do handler
-(`[JFB MercadoPago Webhook] ...`).
+### Credenciais: `TEST-` (teste) vs `APP_USR-` (produção)
+- Para **testar**, use o Access Token **`TEST-...`** e a Assinatura secreta do
+  **app/modo de teste**.
+- Em **produção**, use **`APP_USR-...`** e a Assinatura secreta de produção.
+- O par precisa ser **coerente**: o segredo em `JFB_MP_WEBHOOK_SECRET` tem que
+  ser o do **mesmo app/modo** cujo Simulador você está usando, senão dá **401**.
+
+### Simulador de webhooks do painel
+O Simulador envia uma notificação **assinada**, porém com um **`data.id` FALSO**
+(`123456`). Então:
+- Ele serve para validar **conectividade + assinatura** (sair do 404 e do 401).
+- Como o id é falso, a consulta `GET /v1/payments/123456` retorna 404 no MP;
+  o handler trata isso como **"payment not found" e responde 200** (não é erro).
+  Ou seja: **200 no Simulador = URL + assinatura OK** (é o "verde" possível aqui).
+- O teste **de ponta a ponta de verdade** é fazer um **pagamento de teste real**
+  (pay-now com cartão de teste) e ver o webhook chegar com um id real.
+
+### Ver o motivo de um 401/500 (debug)
+No `wp-config.php`:
+```php
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+```
+Rode o Simulador e veja `wp-content/debug.log` nas linhas
+`[JFB MercadoPago Webhook] ...`. Em 401 o log diz se foi **header ausente** ou
+**assinatura não confere** (segredo errado). Desligue depois.
 
 ## 6. Fase 2 (próximo passo)
 
