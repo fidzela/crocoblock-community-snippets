@@ -26,10 +26,24 @@ class Manager {
 	private $base;
 
 	/**
+	 * NEUTRALIZADA (D2) — o projeto usa EXCLUSIVAMENTE o JetFormBuilder.
+	 *
+	 * Este Manager é o caminho de compatibilidade com **JetEngine Forms** — um
+	 * sistema de formulários SEPARADO do JetFormBuilder, herdado do addon Stripe.
+	 * Ele ainda lê chaves `stripe_*` (stripe_public/secret/currency) e renderiza
+	 * campos "Stripe settings" no editor do JetEngine; ou seja, é código
+	 * Stripe-shaped FORA do nosso escopo (só JetFormBuilder).
+	 *
+	 * Em vez de portar `stripe_*` -> `mercadopago_*` (esforço sem uso real),
+	 * garantimos que ele NUNCA instancie: `condition()` retorna `false`. Assim a
+	 * classe fica INERTE e sem chance de conflito — não registra hooks, não toca
+	 * em pagamento. O arquivo é mantido só como referência histórica; se o
+	 * JetEngine Forms voltar ao escopo, reativar aqui e portar as chaves.
+	 *
 	 * @return boolean
 	 */
 	protected static function condition() {
-		return function_exists( 'jet_engine' ) && apply_filters( 'jet-engine/forms/allow-gateways', false );
+		return false;
 	}
 
 	private function __construct() {
