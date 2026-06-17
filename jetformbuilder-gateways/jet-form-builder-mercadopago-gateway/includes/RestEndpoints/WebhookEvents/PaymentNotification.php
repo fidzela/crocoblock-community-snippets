@@ -35,7 +35,7 @@
 
 namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
-use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Checkout_Session;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Payment;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
@@ -72,7 +72,7 @@ class PaymentNotification {
 		}
 
 		// Fonte de verdade: consulta autenticada do pagamento.
-		$payment = ( new Retrieve_Checkout_Session() )
+		$payment = ( new Retrieve_Payment() )
 			->set_bearer_auth( $token )
 			->set_path( array( 'id' => $data_id ) )
 			->send_request();

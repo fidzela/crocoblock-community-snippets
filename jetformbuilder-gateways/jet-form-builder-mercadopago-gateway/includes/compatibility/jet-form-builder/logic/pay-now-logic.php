@@ -46,8 +46,8 @@
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Logic;
 
-use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Checkout_Session;
-use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Checkout_Session;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Preference;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Payment;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Pay_Now_Connector;
 use Jet_Form_Builder\Actions\Types\Save_Record;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
@@ -155,7 +155,7 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	public function create_resource() {
 		$controller = jet_fb_gateway_current();
 
-		$request = ( new Create_Checkout_Session() )
+		$request = ( new Create_Preference() )
 			->set_bearer_auth( $controller->current_gateway( 'secret' ) ) // 'secret' = Access Token
 			->set_currency( $controller->current_gateway( 'currency' ) )
 			->set_price( $controller->get_price_var() )                    // BRL real (sem *100)
@@ -228,7 +228,7 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 		}
 
 		// Fonte de verdade: GET /v1/payments/{id} autenticado.
-		$payment = ( new Retrieve_Checkout_Session() )
+		$payment = ( new Retrieve_Payment() )
 			->set_bearer_auth( jet_fb_gateway_current()->current_gateway( 'secret' ) )
 			->set_path( array( 'id' => $payment_id ) )
 			->send_request();

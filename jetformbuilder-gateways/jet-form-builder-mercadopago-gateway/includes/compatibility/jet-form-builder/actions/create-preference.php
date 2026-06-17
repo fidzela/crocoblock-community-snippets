@@ -1,40 +1,23 @@
 <?php
 /**
  * ============================================================================
- *  Create_Checkout_Session  —  Cria uma PREFERENCE do Mercado Pago (Checkout Pro)
+ *  Create_Preference  —  Cria uma PREFERENCE do Mercado Pago (Checkout Pro)
  * ============================================================================
  *
- *  DESTINO (cole por cima):
- *    includes/compatibility/jet-form-builder/actions/create-checkout-session.php
+ *  Usada pelo cenário pay-now. Monta o corpo da Preference e faz
+ *  POST /checkout/preferences. A resposta traz { id, init_point,
+ *  sandbox_init_point, ... }; o pay-now-logic decide o redirect entre
+ *  init_point (produção) e sandbox_init_point (modo teste, token TEST-).
  *
- *  IMPORTANTE — POR QUE O NOME DA CLASSE CONTINUA "Create_Checkout_Session":
- *  ---------------------------------------------------------------------------
- *  O pay-now-logic.php importa `...\Actions\Create_Checkout_Session`. Para você
- *  apenas COLAR POR CIMA (sem mexer em nenhum `use`/referência), mantemos o
- *  nome da classe e do arquivo. Só o COMPORTAMENTO muda: em vez de criar uma
- *  Checkout Session do Stripe (POST /v1/checkout/sessions), cria uma
- *  Preference do Mercado Pago (POST /checkout/preferences).
+ *  Detalhes do corpo:
+ *    - items: title / quantity / unit_price (BRL decimal, SEM *100) / currency_id;
+ *    - back_urls.success/failure/pending + auto_return:'approved';
+ *    - binary_mode:true (fase 1: só cartão; recusa 'pending');
+ *    - external_reference (anti-replay / reconciliação do webhook);
+ *    - payment_methods.excluded_payment_types (exclui Pix/boleto/ATM na fase 1).
  *
- *  MAPA Stripe -> Mercado Pago:
- *    endpoint        v1/checkout/sessions      ->  checkout/preferences
- *    line_items      amount (centavos!) +      ->  items: title/quantity/
- *                    currency + name               unit_price (BRL decimal!) +
- *                                                   currency_id
- *    success/cancel  success_url / cancel_url  ->  back_urls.success/failure/pending
- *    (sem pending)                                 + auto_return:'approved'
- *    -                                         ->  binary_mode: true  (fase 1: só
- *                                                   cartão; recusa 'pending')
- *    metadata token  client_reference_id       ->  external_reference (anti-replay)
- *    métodos         payment_method_types:card ->  payment_methods.excluded_payment_types
- *                                                   (exclui Pix/boleto/ATM)
- *
- *  RESPOSTA: a API devolve { id, init_point, sandbox_init_point, ... }.
- *  O pay-now-logic decide o redirect entre init_point (produção) e
- *  sandbox_init_point (modo teste).
- *
- *  VALOR MONETÁRIO: BRL é decimal real (ex.: 24.90). NÃO multiplicar por 100
- *  (diferença crucial vs. Stripe). O valor chega via set_price() já no formato
- *  correto, pois o trait Base_Mercadopago::get_price() NÃO multiplica.
+ *  VALOR MONETÁRIO: BRL é decimal real (ex.: 24.90). O valor chega via
+ *  set_price() já correto (Base_Mercadopago::get_price() NÃO multiplica).
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
@@ -47,7 +30,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-class Create_Checkout_Session extends Base_Action {
+class Create_Preference extends Base_Action {
 
 	/**
 	 * Verbo HTTP: criação.
@@ -207,29 +190,6 @@ class Create_Checkout_Session extends Base_Action {
 	public function set_installments( $installments ) {
 		$this->installments = (int) $installments;
 
-		return $this;
-	}
-
-	/**
-	 * No-ops mantidos por compatibilidade com o caminho de SUBSCRIPTION
-	 * (inerte na fase 1). O subscription-logic do fork chama set_price_id()
-	 * e set_mode(); preservamos os métodos para o arquivo carregar sem fatal,
-	 * mesmo que o cenário esteja desligado.
-	 *
-	 * @param mixed $id
-	 *
-	 * @return static
-	 */
-	public function set_price_id( $id ) {
-		return $this;
-	}
-
-	/**
-	 * @param mixed $mode
-	 *
-	 * @return static
-	 */
-	public function set_mode( $mode ) {
 		return $this;
 	}
 
