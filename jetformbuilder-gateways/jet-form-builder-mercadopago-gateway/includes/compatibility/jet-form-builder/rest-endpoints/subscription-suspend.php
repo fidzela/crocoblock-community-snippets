@@ -1,20 +1,39 @@
 <?php
+/**
+ * ============================================================================
+ *  Subscription_Suspend  —  Suspende (pausa) uma assinatura MP (admin)
+ * ============================================================================
+ *
+ *  Ligado ao botão "Suspend" do admin pela mesma mecânica gateway-aware do
+ *  Cancel_Subscription: a URL resolve em `mercadopago/subscription/suspend/{id}`.
+ *
+ *  API: PUT /preapproval/{billing_id} { status: 'paused' } (espelha o
+ *  pause_collection do Stripe). A REATIVAÇÃO acontece pelo webhook
+ *  `subscription_preapproval` quando a assinatura volta a `authorized`
+ *  (igual ao Stripe, que reativa via customer.subscription.updated).
+ *
+ *  @package Jet_FB_Mercadopago_Gateway
+ */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
 
-use Jet_FB_Paypal\QueryViews\SubscriptionsView;
-use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
-use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
-
-
-use Jet_FB_Paypal\Resources\Subscription;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Update_Preapproval;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Controller;
+use Jet_FB_Mercadopago_Gateway\FormEvents\SubscriptionSuspendedEvent;
+use Jet_FB_Paypal\QueryViews\SubscriptionsView;
+use Jet_FB_Paypal\Resources\Subscription;
+use Jet_FB_Paypal\Utils\SubscriptionUtils;
+use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
 use WP_REST_Response;
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 
 class Subscription_Suspend extends Rest_Api_Endpoint_Base {
 
 	public static function get_rest_base() {
-		return 'stripe/subscription/suspend/(?P<id>\d+)'; //CLAUDE
+		return 'mercadopago/subscription/suspend/(?P<id>[\d]+)';
 	}
 
 	public static function get_methods() {
@@ -26,106 +45,72 @@ class Subscription_Suspend extends Rest_Api_Endpoint_Base {
 	}
 
 	public function run_callback( \WP_REST_Request $request ) {
-		try {
+		$id = (int) $request->get_param( 'id' );
 
-			$subscription_id = (int) $request->get_param( 'id' );
-			if ( ! $subscription_id ) {
-				return new WP_REST_Response( [ 'error' => 'empty_subscription_id' ], 400 );
-			}
+		if ( ! $id ) {
+			return new WP_REST_Response( array( 'error' => 'empty_subscription_id' ), 400 );
+		}
 
-			$sub_q    = SubscriptionsView::find( [ 'id' => $subscription_id ] )->query();
-			$sub_rows = $sub_q->db()->get_results( $sub_q->sql(), ARRAY_A );
-			if ( empty( $sub_rows ) ) {
-				return new WP_REST_Response( [ 'error' => 'subscription_not_found' ], 404 );
-			}
+		$query = SubscriptionsView::find( array( 'id' => $id ) )->query();
+		$rows  = $query->db()->get_results( $query->sql(), ARRAY_A );
 
-			$subscription  = $sub_q->view()->get_prepared_row( $sub_rows[0] );
+		if ( empty( $rows ) ) {
+			return new WP_REST_Response( array( 'error' => 'subscription_not_found' ), 404 );
+		}
 
-			$gateway = strtolower( (string) ( $subscription['gateway_id'] ?? $subscription['gateway'] ?? '' ) );
-			if ( 'stripe' !== $gateway ) {
-				return new WP_REST_Response( [ 'error' => 'not_a_stripe_subscription' ], 400 );
-			}
+		$subscription = $query->view()->get_prepared_row( $rows[0] );
 
-			$stripe_sub_id = (string) ( $subscription['billing_id'] ?? '' );
-			if ( '' === $stripe_sub_id ) {
-				return new WP_REST_Response( [ 'error' => 'stripe_subscription_id_empty' ], 400 );
-			}
+		$gateway = strtolower( (string) ( $subscription['gateway_id'] ?? '' ) );
 
-			$form_id = (int) ( $subscription['form_id'] ?? 0 );
-			if ( ! $form_id ) {
-				return new WP_REST_Response( [ 'error' => 'form_id_empty' ], 400 );
-			}
+		if ( 'mercadopago' !== $gateway ) {
+			return new WP_REST_Response( array( 'error' => 'not_a_mercadopago_subscription' ), 400 );
+		}
 
-			$secret = Controller::get_token_by_form_id( $form_id );
-			if ( ! is_string( $secret ) || '' === $secret ) {
-				return new WP_REST_Response( [ 'error' => 'secret_not_found_for_form' ], 500 );
-			}
+		$form_id    = (int) ( $subscription['form_id'] ?? 0 );
+		$billing_id = (string) ( $subscription['billing_id'] ?? '' );
 
-			$secret = Controller::get_token_by_form_id( $form_id );
-			$reason = sanitize_textarea_field( (string) $request->get_param('reason') );
-			$body = [
-				'pause_collection[behavior]' => 'mark_uncollectible',
-			];
-			if ( $reason !== '' ) {
-				$body['metadata[suspend_reason]'] = $reason;
-			}
+		if ( ! $form_id || '' === $billing_id ) {
+			return new WP_REST_Response( array( 'error' => 'missing_form_or_billing_id' ), 400 );
+		}
 
-			$resp = wp_remote_post(
-				'https://api.stripe.com/v1/subscriptions/' . rawurlencode( $stripe_sub_id ), // CLAUDE VERIFICAR
-				array(
-					'headers' => array(
-						'Authorization' => 'Bearer ' . $secret,
-					),
-					'timeout' => 30,
-					'body'    => $body,
-				)
-			);
+		$creds = Controller::get_credentials_by_form( $form_id );
+		$token = (string) ( $creds['secret'] ?? '' );
 
-			if ( is_wp_error( $resp ) ) {
-				error_log( '[StripeSuspend] http_error: ' . $resp->get_error_message() );
-				return new WP_REST_Response(
-					[ 'error' => 'stripe_http_error', 'details' => $resp->get_error_message() ],
-					502
-				);
-			}
+		if ( '' === $token ) {
+			return new WP_REST_Response( array( 'error' => 'access_token_not_found' ), 500 );
+		}
 
-			$code = wp_remote_retrieve_response_code( $resp );
-			$body = json_decode( wp_remote_retrieve_body( $resp ), true );
-			if ( $code < 200 || $code >= 300 ) {
-				error_log( '[StripeSuspend] api_error ' . $code . ' ' . ( $body['error']['message'] ?? 'unknown' ) );
-				return new WP_REST_Response(
-					[
-						'error'   => 'stripe_api_error',
-						'code'    => $code,
-						'details' => $body,
-					],
-					500
-				);
-			}
+		$resp = ( new Update_Preapproval() )
+			->set_bearer_auth( $token )
+			->set_path( array( 'id' => $billing_id ) )
+			->set_status( 'paused' )
+			->send_request();
 
-			$resource = new Subscription( $subscription );
-			$resource->set_suspended();
-
+		if ( isset( $resp['error'] ) ) {
 			return new WP_REST_Response(
 				array(
-					'message'         => 'Subscription paused on Stripe',
-					'subscription_id' => $subscription_id,
-					'stripe_response' => $body,
+					'error'   => 'mercadopago_api_error',
+					'message' => $resp['error']['message'] ?? 'unknown',
 				),
-				200
-			);
-
-		} catch ( \Throwable $e ) {
-			error_log( '[StripeSuspend] fatal: ' . $e->getMessage() );
-			return new WP_REST_Response(
-				array(
-					'error'   => 'internal_error',
-					'message' => $e->getMessage(),
-				),
-				500
+				503
 			);
 		}
+
+		// Status local imediato + evento do form. O webhook (status=paused) tem
+		// guard de transição, então não redispara.
+		$resource = new Subscription( $subscription );
+		$resource->set_suspended();
+
+		SubscriptionUtils::execute_event_for_subscription( $subscription['id'], SubscriptionSuspendedEvent::class );
+
+		do_action( 'jet-form-builder/subscription/change-status-manual', $resource );
+
+		return new WP_REST_Response(
+			array(
+				'message'         => __( 'Subscription paused successfully!', 'jet-form-builder-mercadopago-gateway' ),
+				'subscription_id' => $id,
+			),
+			200
+		);
 	}
-
-
 }
