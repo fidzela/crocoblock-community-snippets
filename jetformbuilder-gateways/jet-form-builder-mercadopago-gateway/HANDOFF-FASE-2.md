@@ -354,26 +354,21 @@ como sucesso-sem-redisparo. *Fica como follow-up.*
   (será reescrito p/ MP) e `refund-payment.php` (refund é por ÚLTIMO). Demais
   ocorrências são **comentários** "guia de port" (aceitável pelo critério).
 
-**🧭 DESCOBERTA ARQUITETURAL (corrige a tabela de tradução da seção 5) — LER
-ANTES de mexer no GERENCIAMENTO de assinaturas:**
-Os botões de **Cancel/Suspend/Refund** do admin (Shared `TableViews/Actions/*`
-e `Pages/Actions/*`) montam a URL via **`PayPalCancelSubscription::dynamic_rest_url`
-/ `PayPalSuspendSubscription` / `PayPalRefundPayment`** — ou seja, usam os
-**endpoints Shared do PayPal** (`Jet_FB_Paypal\RestEndpoints\*`), registrados pelo
-`Proxy\RestApiController`. Esses endpoints chamam a **API do PayPal**
-(`CancelSubscriptionAction` → `v1/billing/subscriptions/{billing_id}/cancel`).
-**Logo, os endpoints gateway-específicos `Cancel_Subscription` /
-`Subscription_Suspend` / `Refund_Payment` (rotas `stripe/...`) estão ÓRFÃOS** —
-NADA no admin os chama. Portar só a rota/URL deles (como a seção 5 sugeria) não
-liga nada. **Decisão de arquitetura necessária p/ o gerenciamento MP:**
-- **(A)** sobrescrever as *ApiActions* Shared do PayPal para, quando o gateway da
-  assinatura for `mercadopago`, chamar `PUT /preapproval/{billing_id}`
-  (`{status: cancelled|paused|authorized}`) em vez de `api.paypal.com` — mantém o
-  admin UI intacto; **ou**
-- **(B)** re-cabear o admin UI (Shared actions) para os endpoints
-  gateway-específicos e terminar de portá-los.
-> Antes de decidir, **conferir como o addon Stripe original cabeia o admin dele**
-> (Shared PayPal vs `stripe/...` próprios) — para *replicar o Stripe* de verdade.
+**🧭 ARQUITETURA DO GERENCIAMENTO (esclarecida — corrige uma leitura anterior
+equivocada de "endpoints órfãos"):**
+O admin monta a URL de Cancel/Suspend via `PayPalCancelSubscription::dynamic_rest_url(
+[ 'gateway' => $record['gateway_id'], 'id' => $id ] )` (ver
+`TableViews/Actions/CancelSubscription` + trait `BaseSubscriptionArgs`). O core
+`Gateway_Endpoint::get_rest_base()` compõe a rota como
+**`(?P<gateway>[\w-]+)/<gateway_rest_base>`**. Logo, `dynamic_rest_url` é
+**gateway-aware**: para uma assinatura do MP a URL resolve em
+**`mercadopago/subscription/cancel/{id}`**. Ou seja, **os endpoints
+gateway-específicos NÃO são órfãos** — basta registrá-los na rota
+`mercadopago/...` que o botão do admin os alcança. É **a mesma mecânica do addon
+Stripe** (`stripe/subscription/cancel/{id}`). A classe `PayPalCancelSubscription`
+serve só como *construtor de URL* compartilhado; quem responde é o endpoint do
+gateways da assinatura. (A `PayPalRestSubscriptionStatus`, hardcoded p/ PayPal,
+**não** é usada pelo MP — usamos endpoints próprios.)
 
 **📌 Fatos confirmados p/ a reescrita de assinaturas (modelo plano / D1):**
 - Chaves do cenário no editor: **`plan_field`** (campo do form cujo valor = id do
@@ -396,20 +391,37 @@ liga nada. **Decisão de arquitetura necessária p/ o gerenciamento MP:**
   na hora (status `pending` + `init_point`). Dá p/ gravar `billing_id` já na
   criação (no Stripe o id só vinha pelo webhook `checkout.session.completed`).
 
-**⏭️ Próximas etapas (nesta ordem, cada uma testada no sandbox `TEST-`):**
-1. **Criação MP-native (D1, modelo plano):** nova action `Create_Preapproval`
-   (`POST /preapproval` com `preapproval_plan_id`, `payer_email`, `external_reference`,
-   `back_url`, `notification_url`) + reescrever `subscription-logic.php`
-   (cria `SubscriptionModel` APPROVAL_PENDING, grava `billing_id`, redireciona p/
-   `init_point`). Remover a chamada a `Webhook_Manager` e aos `set_plan_field`.
-2. **Webhook de assinatura:** Dispatcher + handlers `subscription_preapproval`
-   (status → ACTIVE/SUSPENDED/CANCELLED) e `subscription_authorized_payment`
-   (cria `Payment_Model` INITIAL/RENEWAL; dispara `Gateway_Success_Event` /
-   `RenewalPaymentEvent` / `Gateway_Failed_Event` via
-   `SubscriptionUtils::execute_event_for_subscription`).
-3. **Gerenciamento:** resolver a decisão arquitetural (A/B acima) e implementar
-   cancel/suspend/reactivate via `PUT /preapproval/{id}`.
-4. **Refund por ÚLTIMO**, após discussão de segurança (decisão do dono).
+**✅ Assinaturas MP-native IMPLEMENTADAS (modelo plano / D1):**
+1. **Criação:** actions `Create_Preapproval` (POST /preapproval),
+   `Retrieve_Preapproval`, `Retrieve_Authorized_Payment`, `Retrieve_Preapproval_Plan`,
+   `Update_Preapproval` (PUT). `subscription-logic.php` reescrito: cria
+   `SubscriptionModel` APPROVAL_PENDING + `RecurringCyclesModel` (lido do plano),
+   POST /preapproval, grava `billing_id` (o MP devolve na hora), redireciona p/
+   `init_point`. `process_after/process_status` vazios (webhook dirige, igual
+   Stripe). Resolve `payer_email` (campo do form → usuário logado → filtro).
+2. **Webhook:** `Dispatcher` roteia 2 tópicos. `PreapprovalNotification`
+   (`subscription_preapproval`) → status (authorized/paused/cancelled, com guard
+   de transição). `AuthorizedPaymentNotification` (`subscription_authorized_payment`)
+   → `Payment_Model` `initial`/`renew` (no CORE) + `SubscriptionToPaymentModel` +
+   dispara `Gateway_Success_Event` / `RenewalPaymentEvent` / `Gateway_Failed_Event`.
+   Idempotente por `transaction_id`. Removidos os 5 handlers dormentes Stripe-shaped.
+3. **Gerenciamento:** `cancel-subscription.php` / `subscription-suspend.php`
+   reescritos p/ MP (rota `mercadopago/subscription/...`, `PUT /preapproval` status,
+   token via `Controller::get_credentials_by_form`). Ligados ao admin pela mecânica
+   gateway-aware (ver acima). Reativação via webhook (igual Stripe).
+
+**⏭️ Falta:**
+- **Refund** (por ÚLTIMO): `refund-payment.php` ainda é Stripe (`POST
+  /v1/refunds`) — único `api.stripe.com` ativo restante. Reescrever p/ `POST
+  /v1/payments/{id}/refunds` **após a discussão de segurança** com o dono
+  (idempotência, fonte-de-verdade via webhook, guard atômico, total×parcial,
+  capability/auditoria).
+- **Editor:** o cenário "Subscription" só aparece com
+  `JFB_MP_SUBSCRIPTIONS_ENABLED=true` (`wp-config`); o seletor de planos
+  ("Refresh Plans From Mercadopago") já está scaffoldado.
+- **Teste sandbox (`TEST-`):** criar assinatura → autorizar → ACTIVE → 1ª cobrança
+  (webhook) → renovação → pausar/cancelar. Ativar os tópicos
+  `subscription_preapproval` + `subscription_authorized_payment` no painel MP.
 
 ### Critérios de aceite (Definition of Done — Fase 2)
 - [ ] `JFB_MP_SUBSCRIPTIONS_ENABLED=true` **ativa sem fatal** e sem quebrar a REST.
