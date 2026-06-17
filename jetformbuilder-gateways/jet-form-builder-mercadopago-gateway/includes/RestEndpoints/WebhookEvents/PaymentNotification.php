@@ -100,6 +100,14 @@ class PaymentNotification {
 				: self::ok( 'payment not found' );
 		}
 
+		$mp_status = (string) ( $payment['status'] ?? '' );
+
+		// REFUND / chargeback: reconcilia o REFUNDED (estorno via admin OU feito
+		// direto no painel do MP). Fonte de verdade do status.
+		if ( in_array( $mp_status, array( 'refunded', 'partially_refunded', 'charged_back' ), true ) ) {
+			return $this->reconcile_refund( $payment, $data_id );
+		}
+
 		$row = $this->find_row( (string) ( $payment['external_reference'] ?? '' ) );
 
 		if ( null === $row ) {
@@ -154,6 +162,70 @@ class PaymentNotification {
 		try {
 			$row = Payment_With_Record_View::findOne(
 				array( 'initial_transaction_id' => $external_reference )
+			)->query()->query_one();
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+
+		return ! empty( $row ) ? $row : null;
+	}
+
+	/**
+	 * Reconcilia um estorno: marca REFUNDED (atômico) o pagamento. Acha a linha
+	 * por external_reference (pay-now) OU por transaction_id == data_id
+	 * (assinatura, onde o transaction_id já é o payment_id do MP).
+	 *
+	 * @param array  $payment
+	 * @param string $data_id
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function reconcile_refund( array $payment, string $data_id ): WP_REST_Response {
+		$row = $this->find_row( (string) ( $payment['external_reference'] ?? '' ) );
+
+		if ( null === $row ) {
+			$row = $this->find_row_by_transaction( $data_id );
+		}
+
+		if ( null === $row ) {
+			return self::ok( 'refund: no matching record' );
+		}
+
+		if ( 'REFUNDED' === ( $row['status'] ?? '' ) ) {
+			return self::ok( 'already refunded' );
+		}
+
+		try {
+			( new Payment_Model() )->update(
+				array( 'status' => 'REFUNDED' ),
+				array(
+					'id'     => $row['id'],
+					'status' => 'COMPLETED',
+				)
+			);
+		} catch ( Sql_Exception $exception ) {
+			// Não estava COMPLETED (ou já mudou) -> idempotente.
+			return self::ok( 'refund: not completed' );
+		}
+
+		return self::ok( 'refunded' );
+	}
+
+	/**
+	 * Acha a linha do pagamento pelo transaction_id (= payment_id do MP).
+	 *
+	 * @param string $transaction_id
+	 *
+	 * @return array|null
+	 */
+	private function find_row_by_transaction( string $transaction_id ) {
+		if ( '' === $transaction_id ) {
+			return null;
+		}
+
+		try {
+			$row = Payment_With_Record_View::findOne(
+				array( 'transaction_id' => $transaction_id )
 			)->query()->query_one();
 		} catch ( \Throwable $e ) {
 			return null;
