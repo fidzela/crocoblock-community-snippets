@@ -127,35 +127,22 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	}
 
 	/**
-	 * URL de redirecionamento do checkout.
-	 *
-	 * REPLICA O STRIPE: o Stripe redireciona para uma URL ÚNICA (a `url` da
-	 * Checkout Session) e o ambiente (teste/produção) é definido pela CHAVE
-	 * (`sk_test_` vs `sk_live_`). Fazemos o mesmo: usamos sempre o `init_point` e
-	 * o ambiente é definido pelo Access Token (`TEST-` vs `APP_USR-`).
-	 *
-	 * POR QUE NÃO USAR `sandbox_init_point`: é um caminho LEGADO do Mercado Pago
-	 * (em depreciação). Com o checkout novo, redirecionar pro sandbox_init_point
-	 * costuma RECUSAR o pagamento. O `init_point` de uma preference criada com
-	 * token `TEST-` já é um checkout de TESTE — então é o caminho correto e
-	 * moderno (e o que mantém a paridade com o Stripe).
-	 *
-	 * Filtro `jet-form-builder/mercadopago/redirect-url` permite forçar o
-	 * sandbox_init_point (ou outra URL) sem editar o código, se necessário.
+	 * Escolhe a URL de redirecionamento conforme o ambiente.
+	 * Access Token de teste começa com 'TEST-' -> sandbox_init_point.
 	 *
 	 * @param array $preference
 	 *
 	 * @return string
 	 */
 	protected function resolve_redirect_url( array $preference ): string {
-		$url = $preference['init_point'] ?? ( $preference['sandbox_init_point'] ?? '' );
+		$token   = (string) jet_fb_gateway_current()->current_gateway( 'secret' );
+		$is_test = ( 0 === strpos( $token, 'TEST-' ) );
 
-		return (string) apply_filters(
-			'jet-form-builder/mercadopago/redirect-url',
-			$url,
-			$preference,
-			$this
-		);
+		if ( $is_test && ! empty( $preference['sandbox_init_point'] ) ) {
+			return $preference['sandbox_init_point'];
+		}
+
+		return $preference['init_point'] ?? ( $preference['sandbox_init_point'] ?? '' );
 	}
 
 	/**

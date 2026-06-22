@@ -241,12 +241,7 @@ class Create_Preference extends Base_Action {
 				'pending' => $this->pending_url,
 			),
 			'auto_return'        => 'approved',
-			// binary_mode OFF por padrão (igual ao Stripe, que não tem esse
-			// conceito). Com `true`, o MP RECUSA qualquer pagamento que passe por
-			// "review"/in_process — e o checkout NOVO do MP joga até cartão de
-			// teste APRO pra "review", derrubando o pagamento. Filtrável para
-			// quem quiser o modo estrito (só aprovado-na-hora).
-			'binary_mode'        => (bool) apply_filters( 'jet-form-builder/mercadopago/binary-mode', false, $this ),
+			'binary_mode'        => true, // fase 1: cartão; recusa 'pending' automaticamente
 			'external_reference' => $this->external_reference,
 			'payment_methods'    => array(
 				'excluded_payment_types' => $this->get_excluded_payment_types(),
