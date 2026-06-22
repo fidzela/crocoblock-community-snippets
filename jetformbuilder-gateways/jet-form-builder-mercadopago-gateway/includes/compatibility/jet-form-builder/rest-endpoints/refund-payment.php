@@ -32,6 +32,7 @@ use Jet_FB_Paypal\QueryViews\PaymentsWithSales;
 use Jet_FB_Paypal\Resources\Subscription;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
+use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
 use WP_REST_Response;
 
 if ( ! defined( 'ABSPATH' ) ) {
