@@ -1,49 +1,38 @@
 <?php
 /**
  * ============================================================================
- *  Fetch_Mercadopago_Plans  —  Endpoint REST de "planos" (SUBSCRIPTION/fase 2)
+ *  Fetch_Mercadopago_Plans  —  Lista os planos (preapproval_plan) p/ o editor
  * ============================================================================
  *
- *  DESTINO (cole por cima):
- *    includes/compatibility/jet-form-builder/rest-endpoints/fetch-mercadopago-plans.php
+ *  Alimenta o dropdown "Subscription Plan" do cenário de assinatura. O botão
+ *  "Refresh Plans From Mercadopago" (assets/js/mercadopago.js) faz POST aqui com
+ *  { public, secret, force_refresh }.
  *
- *  >>> ESTE ERA O BLOQUEADOR Nº 1 (fatal garantido no boot) <<<
+ *  POR QUE FOI REESCRITO (corrige "Request failed" opaco):
  *  ---------------------------------------------------------------------------
- *  O `Rest_Controller::routes()` faz `new Fetch_Mercadopago_Plans()`. O arquivo,
- *  porém, declarava `class Fetch_Stripe_Plans` no namespace `Jet_FB_Mercadopago_Gateway`.
- *  Resultado: ao registrar as rotas (no `rest_api_init`, que dispara em TODA
- *  requisição REST — inclusive wp-admin e o submit do formulário), o autoloader
- *  carregava este arquivo mas NÃO encontrava a classe `Fetch_Mercadopago_Plans`
- *  -> *Fatal error: Class not found*. A API REST inteira quebrava.
- *
- *  CORRIGIDO:
- *   - namespace  ...Stripe...  ->  ...Mercadopago...
- *   - class      Fetch_Stripe_Plans  ->  Fetch_Mercadopago_Plans   (casa com o arquivo)
- *   - restaurada a URL comentada em fetch_prices (havia virado bug de runtime:
- *     com a 1ª linha comentada, o array ia como 1º argumento de wp_remote_get).
- *
- *  ESCOPO/COMPORTAMENTO: este endpoint é a tela "Refresh Plans" do cenário de
- *  ASSINATURA. No Mercado Pago não há "plans" do mesmo jeito que no Stripe; isto
- *  é puramente legado/INERTE na fase 1 (cartão, pagamento único). Como o
- *  Rest_Controller agora registra este endpoint apenas quando
- *  JFB_MP_SUBSCRIPTIONS_ENABLED === true, na prática ele NEM é instanciado na
- *  fase 1. O conteúdo abaixo é o original (renomeado) só para o arquivo ser
- *  válido; será reescrito para o MP (Preapproval Plan) quando entrarmos em
- *  assinaturas.
+ *  A versão anterior LANÇAVA exceção (token vazio / erro de conexão) e ENGOLIA o
+ *  status HTTP do MP (se o MP respondia 401/400, devolvia lista vazia sem avisar).
+ *  O JS então só mostrava "Request failed", sem causa. Agora:
+ *   - nunca dá fatal;
+ *   - em falha, devolve um WP_Error com MENSAGEM (o JS mostra em vermelho):
+ *       token vazio · HTTP {code} do MP · falha de conexão;
+ *   - em sucesso, devolve { success, data:[ {id,key,value,label,disabled} ] }.
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
 
-use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
+use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
+
+	const ENDPOINT = 'https://api.mercadopago.com/preapproval_plan/search?limit=100';
 
 	public static function get_rest_base() {
 		return 'fetch-mercadopago-plans';
@@ -58,14 +47,71 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 	}
 
 	public function run_callback( \WP_REST_Request $request ) {
-		$secret        = $request->get_param( 'secret' );
-		$force_refresh = filter_var( $request->get_param( 'force_refresh' ), FILTER_VALIDATE_BOOLEAN );
+		$secret = trim( (string) $request->get_param( 'secret' ) );
+		$force  = filter_var( $request->get_param( 'force_refresh' ), FILTER_VALIDATE_BOOLEAN );
 
-		if ( empty( $secret ) ) {
-			throw new Gateway_Exception( 'Access token is required', $secret );
+		if ( '' === $secret ) {
+			return new WP_Error(
+				'mp_no_token',
+				__( 'Access Token vazio. Confira as credenciais do gateway — se o token está só no formulário, desligue "Use Global Settings"; se está no global, ligue.', 'jet-form-builder-mercadopago-gateway' ),
+				array( 'status' => 400 )
+			);
 		}
 
-		$data = $this->get_cached_plans( $secret, $force_refresh );
+		$cache_key = 'jet_fb_mercadopago_plans_' . md5( $secret );
+
+		if ( ! $force ) {
+			$cached = get_transient( $cache_key );
+			if ( is_array( $cached ) ) {
+				return rest_ensure_response( array( 'success' => true, 'data' => $cached ) );
+			}
+		}
+
+		$response = wp_remote_get(
+			self::ENDPOINT,
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $secret,
+					'Accept'        => 'application/json',
+				),
+				'timeout' => 20,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error(
+				'mp_connection',
+				sprintf(
+					/* translators: %s: error message */
+					__( 'Falha de conexão com o Mercado Pago: %s', 'jet-form-builder-mercadopago-gateway' ),
+					$response->get_error_message()
+				),
+				array( 'status' => 502 )
+			);
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( $code < 200 || $code >= 300 ) {
+			$mp_msg = is_array( $body ) ? (string) ( $body['message'] ?? '' ) : '';
+
+			return new WP_Error(
+				'mp_http_error',
+				sprintf(
+					/* translators: 1: HTTP code, 2: Mercado Pago message */
+					__( 'O Mercado Pago recusou a busca de planos (HTTP %1$d). %2$s', 'jet-form-builder-mercadopago-gateway' ),
+					$code,
+					$mp_msg
+				),
+				array( 'status' => 400 )
+			);
+		}
+
+		$results = ( is_array( $body ) && is_array( $body['results'] ?? null ) ) ? $body['results'] : array();
+		$data    = $this->map_plans( $results );
+
+		set_transient( $cache_key, $data, WEEK_IN_SECONDS );
 
 		return rest_ensure_response(
 			array(
@@ -75,63 +121,48 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 		);
 	}
 
-	private function get_cached_plans( string $secret, bool $force_refresh = false ): array {
-		$cache_key = 'jet_fb_mercadopago_plans_' . md5( $secret );
-
-		if ( ! $force_refresh ) {
-			$cached = get_transient( $cache_key );
-			if ( false !== $cached ) {
-				return $cached;
-			}
-		}
-
-		$prices   = $this->fetch_prices( $secret );
-		$products = $this->fetch_products( $secret );
-
-		$data = $this->map_prices_with_products( $prices, $products );
-
-		set_transient( $cache_key, $data, WEEK_IN_SECONDS );
-
-		return $data;
-	}
-
-	private function fetch_prices( string $secret ): array {
-		// NOTE (fase 2): trocar por endpoint de planos do Mercado Pago
-		// (POST/GET /preapproval_plan). Mantido inerte na fase 1.
-		$response = wp_remote_get(
-			'https://api.mercadopago.com/preapproval_plan/search',
-			array(
-				'headers' => array( 'Authorization' => 'Bearer ' . $secret ),
-				'timeout' => 15,
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			throw new Gateway_Exception( $response->get_error_message(), $response );
-		}
-
-		$body = json_decode( wp_remote_retrieve_body( $response ) );
-
-		if ( empty( $body->results ) ) {
-			return array();
-		}
-
-		return $body->results;
-	}
-
-	private function fetch_products( string $secret ): array {
-		// Inerte na fase 1 (MP não tem o conceito "products" do Stripe).
-		return array();
-	}
-
-	private function map_prices_with_products( array $prices, array $products ): array {
+	/**
+	 * Mapeia os planos do MP para o formato do dropdown.
+	 *
+	 * @param array $results
+	 *
+	 * @return array
+	 */
+	private function map_plans( array $results ): array {
 		$data = array();
 
-		foreach ( $prices as $price ) {
+		foreach ( $results as $plan ) {
+			if ( ! is_array( $plan ) ) {
+				continue;
+			}
+
+			$id = (string) ( $plan['id'] ?? '' );
+
+			if ( '' === $id ) {
+				continue;
+			}
+
+			$auto   = is_array( $plan['auto_recurring'] ?? null ) ? $plan['auto_recurring'] : array();
+			$amount = $auto['transaction_amount'] ?? null;
+			$label  = (string) ( $plan['reason'] ?? $id );
+
+			if ( null !== $amount ) {
+				$freq = isset( $auto['frequency'], $auto['frequency_type'] )
+					? ' /' . $auto['frequency'] . ' ' . $auto['frequency_type']
+					: '';
+				$label .= ' — ' . ( $auto['currency_id'] ?? 'BRL' ) . ' ' . $amount . $freq;
+			}
+
+			// status do plano (active/inactive) só p/ informação visual.
+			if ( ! empty( $plan['status'] ) && 'active' !== $plan['status'] ) {
+				$label .= ' [' . $plan['status'] . ']';
+			}
+
 			$data[] = array(
-				'id'       => $price->id ?? '',
-				'key'      => $price->id ?? '',
-				'label'    => $price->reason ?? ( $price->id ?? '' ),
+				'id'       => $id,
+				'key'      => $id,
+				'value'    => $id,
+				'label'    => $label,
 				'disabled' => false,
 			);
 		}
