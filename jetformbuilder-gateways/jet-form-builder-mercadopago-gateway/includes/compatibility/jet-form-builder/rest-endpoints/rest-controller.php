@@ -46,11 +46,16 @@ class Rest_Controller extends Rest_Api_Controller_Base {
 		$routes = array(
 			new Fetch_Pay_Now_Editor(),
 			new Refund_Payment(),
+			// Gerenciamento de planos (página admin "MP Planos" + dropdown do editor).
+			// Sempre disponível: o admin pode criar/listar/excluir planos da API
+			// independentemente do cenário de assinatura estar ligado.
+			new Fetch_Mercadopago_Plans(),
+			new Create_Mercadopago_Plan(),
+			new Delete_Mercadopago_Plan(),
 		);
 
-		// Endpoints de ASSINATURA — só na fase 2 (mantém o boot da fase 1 blindado).
+		// Gerenciamento de ASSINATURA — só na fase 2 (mantém o boot blindado).
 		if ( defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) && JFB_MP_SUBSCRIPTIONS_ENABLED ) {
-			$routes[] = new Fetch_Mercadopago_Plans();
 			$routes[] = new Cancel_Subscription();
 			$routes[] = new Subscription_Suspend();
 		}

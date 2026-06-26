@@ -9,6 +9,7 @@ use Jet_FB_Mercadopago_Gateway\Proxy\AdminPages;
 use Jet_FB_Mercadopago_Gateway\Proxy\AdminSinglePages;
 use Jet_FB_Mercadopago_Gateway\Proxy\RestApiController;
 use Jet_FB_Mercadopago_Gateway\FormEvents\EventsManager;
+use Jet_FB_Mercadopago_Gateway\Admin\Plans_Page;
 
 // If this file is called directly, abort.
 if ( ! defined( 'WPINC' ) ) {
@@ -57,6 +58,7 @@ class Plugin {
 	public function init_components() {
 		if ( is_admin() ) {
 			new Editor();
+			Plans_Page::register();
 		}
 
 		if ( Jet_Engine\Manager::check() ) {

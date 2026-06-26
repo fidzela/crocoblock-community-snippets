@@ -142,28 +142,38 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 				continue;
 			}
 
-			$auto   = is_array( $plan['auto_recurring'] ?? null ) ? $plan['auto_recurring'] : array();
-			$amount = $auto['transaction_amount'] ?? null;
-			$label  = (string) ( $plan['reason'] ?? $id );
+			$auto           = is_array( $plan['auto_recurring'] ?? null ) ? $plan['auto_recurring'] : array();
+			$amount         = isset( $auto['transaction_amount'] ) ? (float) $auto['transaction_amount'] : null;
+			$currency       = (string) ( $auto['currency_id'] ?? 'BRL' );
+			$frequency      = isset( $auto['frequency'] ) ? (int) $auto['frequency'] : null;
+			$frequency_type = (string) ( $auto['frequency_type'] ?? '' );
+			$status         = (string) ( $plan['status'] ?? '' );
+			$reason         = (string) ( $plan['reason'] ?? $id );
+
+			$label = $reason;
 
 			if ( null !== $amount ) {
-				$freq = isset( $auto['frequency'], $auto['frequency_type'] )
-					? ' /' . $auto['frequency'] . ' ' . $auto['frequency_type']
-					: '';
-				$label .= ' — ' . ( $auto['currency_id'] ?? 'BRL' ) . ' ' . $amount . $freq;
+				$freq   = ( $frequency && $frequency_type ) ? ' /' . $frequency . ' ' . $frequency_type : '';
+				$label .= ' — ' . $currency . ' ' . number_format( $amount, 2, ',', '.' ) . $freq;
 			}
 
-			// status do plano (active/inactive) só p/ informação visual.
-			if ( ! empty( $plan['status'] ) && 'active' !== $plan['status'] ) {
-				$label .= ' [' . $plan['status'] . ']';
+			if ( '' !== $status && 'active' !== $status ) {
+				$label .= ' [' . $status . ']';
 			}
 
 			$data[] = array(
-				'id'       => $id,
-				'key'      => $id,
-				'value'    => $id,
-				'label'    => $label,
-				'disabled' => false,
+				'id'             => $id,
+				'key'            => $id,
+				'value'          => $id,
+				'label'          => $label,
+				'disabled'       => ( '' !== $status && 'active' !== $status ),
+				// Dados crus p/ a página admin "MP Planos" (o dropdown ignora estes):
+				'reason'         => $reason,
+				'amount'         => $amount,
+				'currency'       => $currency,
+				'frequency'      => $frequency,
+				'frequency_type' => $frequency_type,
+				'status'         => $status,
 			);
 		}
 
