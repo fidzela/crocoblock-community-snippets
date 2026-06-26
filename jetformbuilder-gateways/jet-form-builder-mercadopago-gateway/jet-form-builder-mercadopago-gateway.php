@@ -17,7 +17,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die();
 }
 
-define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.11' );
+define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.12' );
 
 define( 'JET_FB_MERCADOPAGO_GATEWAY__FILE__', __FILE__ );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_PLUGIN_BASE', plugin_basename( __FILE__ ) );
@@ -31,7 +31,30 @@ if ( ! defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) ) {
 	define( 'JFB_MP_SUBSCRIPTIONS_ENABLED', true );
 }
 
-require JET_FB_MERCADOPAGO_GATEWAY_PATH . 'vendor/autoload.php';
+// Guarda defensiva no autoloader. Se o vendor/autoload.php estiver ausente/ilegível
+// — o que acontece MOMENTANEAMENTE durante uma ATUALIZAÇÃO do plugin (a pasta é
+// removida e re-extraída), ou num upload/extração incompleto — NÃO derrubamos o site
+// inteiro com fatal. Em vez disso, abortamos o boot do plugin e avisamos no admin.
+$jet_fb_mercadopago_autoload = JET_FB_MERCADOPAGO_GATEWAY_PATH . 'vendor/autoload.php';
+
+if ( ! is_readable( $jet_fb_mercadopago_autoload ) ) {
+	add_action(
+		'admin_notices',
+		function () {
+			printf(
+				'<div class="notice notice-error"><p>%s</p></div>',
+				esc_html__(
+					'JetFormBuilder Mercadopago Gateway: dependências ausentes (vendor/autoload.php). Reinstale o plugin — faça o upload do .zip novamente.',
+					'jet-form-builder-mercadopago-gateway'
+				)
+			);
+		}
+	);
+
+	return;
+}
+
+require_once $jet_fb_mercadopago_autoload;
 
 add_action( 'plugins_loaded', function () {
 
