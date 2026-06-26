@@ -37,6 +37,7 @@ namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Payment;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
+use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
@@ -108,10 +109,27 @@ class PaymentNotification {
 			return $this->reconcile_refund( $payment, $data_id );
 		}
 
-		$row = $this->find_row( (string) ( $payment['external_reference'] ?? '' ) );
+		$external_reference = (string) ( $payment['external_reference'] ?? '' );
+
+		// COBRANÇA DE ASSINATURA: o MP entrega a cobrança da preapproval como evento
+		// `payment` (confirmado em teste real), com external_reference = jfbmp-sub-<id>
+		// (que setamos na preapproval). Roteamos para a ativação + registro da
+		// assinatura, em vez da reconciliação de pay-now (que não acharia linha).
+		if ( 0 === strpos( $external_reference, 'jfbmp-sub-' ) ) {
+			return $this->handle_subscription_payment( $payment, $external_reference );
+		}
+
+		$row = $this->find_row( $external_reference );
 
 		if ( null === $row ) {
 			// Pagamento não é nosso (ou ainda sem external_reference) -> ignora.
+			// Logado p/ diagnóstico: se um pagamento de assinatura cair aqui, o
+			// external_reference revela por que (ex.: o MP não ecoou jfbmp-sub-<id>).
+			WebhookConfig::log(
+				'Pagamento sem record/assinatura correspondente.',
+				array( 'external_reference' => $external_reference, 'mp_status' => $mp_status )
+			);
+
 			return self::ok( 'no matching record' );
 		}
 
@@ -144,6 +162,79 @@ class PaymentNotification {
 		$confirmed = $this->confirm( $payment, $row );
 
 		return self::ok( $confirmed ? 'completed' : 'already completed' );
+	}
+
+	/**
+	 * Cobrança de ASSINATURA chegando pelo tópico `payment`: ativa a assinatura
+	 * (se pendente) + grava o Payment_Model + dispara o evento, via recorder
+	 * compartilhado (mesmo usado pelo `subscription_authorized_payment`).
+	 *
+	 * @param array  $payment
+	 * @param string $external_reference  jfbmp-sub-<id>
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function handle_subscription_payment( array $payment, string $external_reference ): WP_REST_Response {
+		$status = (string) ( $payment['status'] ?? '' );
+
+		// Só cobrança APROVADA ativa/registra. (Recusada: no-op; o status da
+		// assinatura, se vier, é tratado pelo tópico subscription_preapproval.)
+		if ( 'approved' !== $status ) {
+			return self::ok( 'subscription payment status ' . ( '' !== $status ? $status : 'unknown' ) );
+		}
+
+		$subscription = $this->find_subscription( $external_reference );
+
+		if ( null === $subscription ) {
+			WebhookConfig::log(
+				'Cobrança de assinatura sem assinatura local correspondente.',
+				array( 'external_reference' => $external_reference )
+			);
+
+			return self::ok( 'subscription not found' );
+		}
+
+		try {
+			$result = ( new SubscriptionPaymentRecorder() )->record(
+				$subscription,
+				(string) ( $payment['id'] ?? '' ),
+				(float) ( $payment['transaction_amount'] ?? 0 ),
+				(string) ( $payment['currency_id'] ?? 'BRL' )
+			);
+		} catch ( \Throwable $e ) {
+			WebhookConfig::log( 'Subscription payment persist failed.', array( 'error' => $e->getMessage() ) );
+
+			// Erro local de gravação -> pedir reentrega.
+			return new WP_REST_Response( array( 'message' => 'persist failed (retry)' ), 500 );
+		}
+
+		return self::ok( 'subscription ' . $result );
+	}
+
+	/**
+	 * Localiza a assinatura local a partir do external_reference jfbmp-sub-<id>.
+	 *
+	 * @param string $external_reference
+	 *
+	 * @return array|null
+	 */
+	private function find_subscription( string $external_reference ) {
+		if ( ! preg_match( '/^jfbmp-sub-(\d+)$/', $external_reference, $matches ) ) {
+			return null;
+		}
+
+		try {
+			$query = SubscriptionsView::find( array( 'id' => (int) $matches[1] ) )->query();
+			$rows  = $query->db()->get_results( $query->sql(), ARRAY_A );
+
+			if ( empty( $rows ) ) {
+				return null;
+			}
+
+			return $query->view()->get_prepared_row( $rows[0] );
+		} catch ( \Throwable $e ) {
+			return null;
+		}
 	}
 
 	/**
