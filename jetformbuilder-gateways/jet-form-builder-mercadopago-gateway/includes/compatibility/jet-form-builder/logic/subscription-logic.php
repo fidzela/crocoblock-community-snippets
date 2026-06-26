@@ -106,14 +106,12 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	public function after_actions() {
 		$this->subscription_id = $this->create_subscription();
 
-		try {
-			$preapproval = $this->create_resource();
-		} catch ( Gateway_Exception $e ) {
-			// Falhou no MP -> não deixa assinatura órfã (APPROVAL_PENDING) na tabela.
-			$this->delete_subscription( $this->subscription_id );
-
-			throw $e;
-		}
+		// Obs.: se o MP recusar, a linha local fica como APPROVAL_PENDING. NÃO
+		// apagamos aqui porque o submit roda no contexto do VISITANTE (sem
+		// manage_options) e Base_Db_Model::before_delete() exige essa capability
+		// -> daria "Not enough capabilities ... delete rows". Limpeza dessas
+		// pendentes é pela tela admin de Subscriptions (lá há permissão).
+		$preapproval = $this->create_resource();
 
 		$this->save_resource( $preapproval );
 
@@ -225,6 +223,7 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	 */
 	public function create_resource() {
 		$controller = jet_fb_gateway_current();
+		$secret     = (string) $controller->current_gateway( 'secret' );
 
 		// Termos vêm do PLANO escolhido (template) e vão INLINE na preapproval —
 		// é o que habilita o init_point sem card_token (ver Create_Preapproval).
@@ -236,11 +235,13 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 			);
 		}
 
+		$payer_email = $this->resolve_payer_email();
+
 		$request = ( new Create_Preapproval() )
-			->set_bearer_auth( $controller->current_gateway( 'secret' ) )
+			->set_bearer_auth( $secret )
 			->set_auto_recurring( $auto_recurring )
 			->set_reason( $this->resolve_plan_reason() )
-			->set_payer_email( $this->resolve_payer_email() )
+			->set_payer_email( $payer_email )
 			->set_external_reference( $this->generate_external_reference() )
 			->set_back_url( $this->get_referrer_url( Base_Gateway::SUCCESS_TYPE ) );
 
@@ -249,7 +250,17 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 		$preapproval = $request->send_request();
 
 		if ( isset( $preapproval['error'] ) ) {
-			throw new Gateway_Exception( $preapproval['error']['message'], $preapproval );
+			// Diagnóstico inline (aparece no form record): mostra QUAL e-mail de
+			// pagador e QUAL prefixo de token foram de fato usados. O erro do MP
+			// "payer and collector must be real or test" é exatamente um
+			// descasamento entre esses dois (payer x dono do token).
+			$hint = sprintf(
+				' [payer_email: %s | token: %s]',
+				'' !== $payer_email ? $payer_email : '(vazio)',
+				'' !== $secret ? substr( $secret, 0, 8 ) . '…' : '(vazio)'
+			);
+
+			throw new Gateway_Exception( $preapproval['error']['message'] . $hint, $preapproval );
 		}
 
 		return $preapproval;
@@ -317,25 +328,6 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 		return (string) ( $this->fetch_plan_data()['reason'] ?? __( 'Subscription', 'jet-form-builder-mercadopago-gateway' ) );
 	}
 
-	/**
-	 * Remove a assinatura local (best-effort) — usado p/ não deixar órfã quando o
-	 * MP recusa a criação. O FK ON DELETE CASCADE remove o ciclo recorrente junto.
-	 *
-	 * @param int $id
-	 *
-	 * @return void
-	 */
-	protected function delete_subscription( $id ) {
-		if ( ! $id ) {
-			return;
-		}
-
-		try {
-			( new SubscriptionModel() )->delete( array( 'id' => $id ) );
-		} catch ( \Throwable $e ) {
-			return;
-		}
-	}
 
 	/**
 	 * Grava o id da Preapproval como billing_id (chave de reconciliação do
@@ -395,14 +387,29 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 		$request = jet_fb_action_handler()->request_data ?? array();
 
 		if ( is_array( $request ) ) {
-			foreach ( $request as $value ) {
-				if ( is_string( $value ) && is_email( $value ) ) {
-					$email = $value;
+			// 1) Campos "de e-mail" mais prováveis (o dono costuma nomear assim).
+			foreach ( array( 'payer_email', 'email', 'e_mail', 'mail', 'user_email' ) as $key ) {
+				if ( ! empty( $request[ $key ] ) && is_email( (string) $request[ $key ] ) ) {
+					$email = (string) $request[ $key ];
 					break;
+				}
+			}
+
+			// 2) Qualquer valor que pareça e-mail.
+			if ( '' === $email ) {
+				foreach ( $request as $value ) {
+					if ( is_string( $value ) && is_email( $value ) ) {
+						$email = $value;
+						break;
+					}
 				}
 			}
 		}
 
+		// 3) Usuário WP logado. CUIDADO no sandbox: se o submit for de um admin
+		// logado, isto traz o e-mail REAL dele -> com token de TESTE o MP recusa
+		// ("Both payer and collector must be real or test users"). Por isso o
+		// campo de e-mail no form é o caminho recomendado.
 		if ( '' === $email ) {
 			$user  = wp_get_current_user();
 			$email = ( $user && $user->user_email ) ? $user->user_email : '';
