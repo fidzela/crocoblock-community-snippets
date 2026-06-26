@@ -199,7 +199,8 @@ class PaymentNotification {
 				$subscription,
 				(string) ( $payment['id'] ?? '' ),
 				(float) ( $payment['transaction_amount'] ?? 0 ),
-				(string) ( $payment['currency_id'] ?? 'BRL' )
+				(string) ( $payment['currency_id'] ?? 'BRL' ),
+				is_array( $payment['payer'] ?? null ) ? $payment['payer'] : array()
 			);
 		} catch ( \Throwable $e ) {
 			WebhookConfig::log( 'Subscription payment persist failed.', array( 'error' => $e->getMessage() ) );

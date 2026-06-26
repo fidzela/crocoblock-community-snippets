@@ -149,16 +149,24 @@ execute_event_for_subscription` (re-roda as ações do form fora da submissão).
 
 ---
 
-## 5. Itens do CORE ainda pendentes (item "b" — fazer ANTES da limpeza)
+## 5. Itens do CORE (item "b") — STATUS
 
-1. **Renovação** — ver o próximo ciclo gerar `Payment_Model` "renew" +
-   `RenewalPaymentEvent` (já implementado no recorder; falta observar).
-2. **Suspend / Cancel** pelo admin — testar os botões (`PUT /preapproval`,
-   rotas `Cancel_Subscription`/`Subscription_Suspend`).
-3. **Refund** — validar o estorno de cobrança de assinatura (a infra já trata:
-   `transaction_id` da assinatura já é o `payment_id` do MP).
-4. **"Subscriber: Not attached"** — vincular o pagador à assinatura (Payer +
-   `SubscriptionToPayerShipping`), como o Stripe faz no `checkout.session.completed`.
+1. **Renovação** — `Payment_Model` "renew" + `RenewalPaymentEvent` no recorder
+   (implementado; falta só OBSERVAR um 2º ciclo no sandbox).
+2. ✅ **Suspend / Cancel** pelo admin — código correto (`PUT /preapproval` cancelled/
+   paused via `Cancel_Subscription`/`Subscription_Suspend`) **+ conflito de rota
+   resolvido** (ver §5.3). Falta o dono clicar e confirmar no sandbox.
+3. ✅ **Refund** — `Refund_Payment` trata cobrança de assinatura (`transaction_id` já
+   é o `payment_id` do MP) **+ conflito de rota resolvido**. Falta confirmar no sandbox.
+4. ✅ **"Subscriber attached"** — o `SubscriptionPaymentRecorder` vincula o pagador na
+   1ª cobrança (Payer + Payer_Shipping + `SubscriptionToPayerShipping`), igual ao
+   Stripe no `checkout.session.completed`. Assinaturas NOVAS deixam de ficar "Not
+   attached". (As já existentes não recebem retroativo.)
+
+> ⚠️ Nada disso pôde ser testado por mim contra a API do MP (proxy bloqueia
+> `api.mercadopago.com`). O **código está correto e embasado na referência**; a
+> validação final é no sandbox do dono (criar assinatura nova → ver Subscriber,
+> Suspend/Cancel, Refund).
 
 ---
 
@@ -187,6 +195,25 @@ Logo, **uma assinatura vigente NÃO referencia o plano**; ela é independente.
 **Se um dia adicionar edição:** restringir a **campos seguros** (nome/descrição),
 deixar EXPLÍCITO que só afeta **assinaturas futuras**, e preferir o padrão
 **"duplicar plano com novos termos + desativar o antigo"** em vez de editar in-place.
+
+---
+
+## 5.3 Conflito de rota gateway-aware (resolvido — v2.0.11)
+
+**Sintoma latente:** os botões admin de **Cancel/Suspend/Refund** montam a URL
+`mercadopago/subscription/cancel|suspend/{id}` e `mercadopago/payment/refund/{id}`
+(via `PayPal*::dynamic_rest_url`, estático). Mas o **proxy** registrava também os
+endpoints **Shared PayPal** desses mesmos caminhos, com rota *gateway-aware*
+`(?P<gateway>...)/...` cujo core (`Gateway_Endpoint::get_common_args`) **valida**
+`gateway === gateway_id()` e `gateway_id()` deles é **'paypal'**. Se o WP casasse a
+rota PayPal primeiro para uma URL `mercadopago/…`, devolveria **400** (gateway !=
+paypal) e o nosso handler MP nunca rodava.
+
+**Fix:** removi `PayPalCancelSubscription`/`PayPalSuspendSubscription`/
+`PayPalRefundPayment` do `Proxy\RestApiController::routes()`. As **classes
+continuam** (o admin usa só os estáticos `dynamic_rest_url`/`get_messages`), mas as
+**rotas** PayPal não são mais registradas → só as nossas `mercadopago/…` atendem.
+(Somos MP-only; não há assinatura/pagamento PayPal pra essas rotas servirem.)
 
 ---
 

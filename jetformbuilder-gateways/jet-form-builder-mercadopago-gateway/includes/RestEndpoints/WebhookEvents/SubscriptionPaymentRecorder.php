@@ -28,13 +28,17 @@ namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 use Jet_FB_Mercadopago_Gateway\FormEvents\RenewalPaymentEvent;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_FB_Paypal\DbModels\SubscriptionToPaymentModel;
+use Jet_FB_Paypal\DbModels\SubscriptionToPayerShipping;
 use Jet_FB_Paypal\Logic\SubscribeNow;
 use Jet_FB_Paypal\QueryViews\PaymentsBySubscription;
 use Jet_FB_Paypal\QueryViews\PaymentsWithSales;
 use Jet_FB_Paypal\Resources\Subscription;
 use Jet_FB_Paypal\Utils\SubscriptionUtils;
 use Jet_Form_Builder\Actions\Events\Gateway_Success\Gateway_Success_Event;
+use Jet_Form_Builder\Db_Queries\Execution_Builder;
 use Jet_Form_Builder\Gateways\Base_Gateway;
+use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
+use Jet_Form_Builder\Gateways\Db_Models\Payer_Shipping_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Query_Views\Payment_With_Record_View;
 
@@ -49,10 +53,11 @@ class SubscriptionPaymentRecorder {
 	 * @param string $transaction_id Id do pagamento no MP (idempotência).
 	 * @param float  $amount         Valor cobrado.
 	 * @param string $currency       Moeda (ex.: BRL).
+	 * @param array  $payer          Dados do pagador do payment (id/email/nome). Opcional.
 	 *
 	 * @return string Mensagem de status (para o log/resposta do webhook).
 	 */
-	public function record( array $subscription, string $transaction_id, float $amount, string $currency ): string {
+	public function record( array $subscription, string $transaction_id, float $amount, string $currency, array $payer = array() ): string {
 		if ( '' === $transaction_id ) {
 			return 'no transaction id';
 		}
@@ -90,10 +95,70 @@ class SubscriptionPaymentRecorder {
 			)
 		);
 
+		// Vincula o PAGADOR à assinatura na 1ª cobrança (como o Stripe faz no
+		// checkout.session.completed) -> tira o "Subscriber: Not attached". Como o
+		// `already_processed` acima garante 1x por transaction_id, e initial só
+		// ocorre uma vez, não duplica em renovações/reentregas.
+		if ( ! $is_renewal ) {
+			$this->attach_payer( $subscription, $payer );
+		}
+
 		$event = $is_renewal ? RenewalPaymentEvent::class : Gateway_Success_Event::class;
 		SubscriptionUtils::execute_event_for_subscription( $subscription['id'], $event );
 
 		return 'completed (' . $type . ')';
+	}
+
+	/**
+	 * Cria Payer + Payer_Shipping + SubscriptionToPayerShipping (a cadeia que a
+	 * coluna "Subscriber" da tabela de assinaturas resolve). Best-effort e atômico:
+	 * se falhar, faz rollback e segue — a cobrança já foi registrada.
+	 *
+	 * @param array $subscription
+	 * @param array $payer  Objeto `payer` do payment do MP (id/email/first_name/last_name).
+	 *
+	 * @return void
+	 */
+	private function attach_payer( array $subscription, array $payer ) {
+		if ( empty( $payer['email'] ) ) {
+			return;
+		}
+
+		$first = (string) ( $payer['first_name'] ?? '' );
+		$last  = (string) ( $payer['last_name'] ?? '' );
+
+		try {
+			Execution_Builder::instance()->transaction_start();
+
+			$payer_id = Payer_Model::insert_or_update(
+				array(
+					'user_id'    => $subscription['user_id'] ?? 0,
+					'payer_id'   => (string) ( $payer['id'] ?? '' ),
+					'first_name' => $first,
+					'last_name'  => $last,
+					'email'      => (string) $payer['email'],
+				)
+			);
+
+			$payer_ship_id = ( new Payer_Shipping_Model() )->insert(
+				array(
+					'payer_id'  => $payer_id,
+					'full_name' => trim( $first . ' ' . $last ),
+				)
+			);
+
+			( new SubscriptionToPayerShipping() )->insert(
+				array(
+					'subscription_id'   => $subscription['id'],
+					'payer_shipping_id' => $payer_ship_id,
+				)
+			);
+
+			Execution_Builder::instance()->transaction_commit();
+		} catch ( \Throwable $e ) {
+			Execution_Builder::instance()->transaction_rollback();
+			WebhookConfig::log( 'Subscriber attach failed.', array( 'error' => $e->getMessage() ) );
+		}
 	}
 
 	/**
