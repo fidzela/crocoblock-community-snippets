@@ -38,6 +38,14 @@
 
 	var component = {
 		name: 'jfb-mp-plans',
+		// O SPA do JFB injeta `incoming` (dados salvos da aba) e `inner-slugs` como
+		// props em TODA aba (jfb-settings.js: attrs:{incoming,...,"inner-slugs"}).
+		// Declaramos para não vazarem como atributos no <div> raiz. Não os usamos —
+		// esta aba não persiste no store de settings; faz CRUD via REST.
+		props: {
+			incoming: { type: [ Object, Array ], default: function () { return {}; } },
+			innerSlugs: { type: Array, default: function () { return []; } }
+		},
 		data: function () {
 			return {
 				plans: [],
@@ -198,9 +206,21 @@
 		'jet.fb.register.settings-page.tabs',
 		'jet-form-builder-mercadopago/plans',
 		function ( tabs ) {
+			// SHAPE confirmado lendo o CORE do JFB (assets/build/admin/pages/jfb-settings.js):
+			//   const Kt = applyFilters('jet.fb.register.settings-page.tabs', [...])  // no load do SPA
+			//   render: attrs:{ name:s.component.name, label:s.title, disabled:s.disabled, icon }
+			//           + (s.component.render ? renderiza s.component : nada)
+			//           + (t.displayButton!==false ? botão Salvar -> getRequestOnSave() : nada)
+			// Logo:
+			//   • `title`     -> STRING (vira o label da aba);
+			//   • `component` -> OBJETO Vue COM `name` e `render` (o SPA lê os dois);
+			//   • `displayButton:false` -> esconde o botão "Salvar" genérico, que chamaria
+			//     getRequestOnSave() (método que NÃO temos: a aba salva via REST própria).
+			// (O addon AC do core usa ()=>c/()=>s, mas são GETTERS do webpack — não funções.)
 			tabs.push( {
-				title: function () { return t.title || 'Mercado Pago Plans'; },
-				component: function mercadopagoPlansTab() { return component; }
+				title: t.title || 'Mercado Pago Plans',
+				component: component,
+				displayButton: false
 			} );
 			return tabs;
 		}
