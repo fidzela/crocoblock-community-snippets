@@ -199,7 +199,10 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 					'interval_count'  => (int) ( $auto['frequency'] ?? 1 ),
 					'currency'        => $auto['currency_id'] ?? 'BRL',
 					'amount'          => number_format( (float) ( $auto['transaction_amount'] ?? 0 ), 2, '.', '' ),
-					'tenure_type'     => 'regular',
+					// MAIÚSCULO de propósito: SubscriptionsView filtra `tenure_type = 'REGULAR'`
+					// (QueryViews/SubscriptionsView.php). Em minúsculo a coluna "billing cycle"
+					// da tabela Subscriptions sai vazia.
+					'tenure_type'     => 'REGULAR',
 				)
 			);
 		} catch ( \Throwable $exception ) {

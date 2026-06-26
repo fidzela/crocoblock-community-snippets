@@ -17,16 +17,18 @@ if ( ! defined( 'WPINC' ) ) {
 	die();
 }
 
-define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.4' );
+define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.5' );
 
 define( 'JET_FB_MERCADOPAGO_GATEWAY__FILE__', __FILE__ );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_PLUGIN_BASE', plugin_basename( __FILE__ ) );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_PATH', plugin_dir_path( __FILE__ ) );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_URL', plugins_url( '/', __FILE__ ) );
 
-// >>> Interruptor do Subscription (ativo-mas-inerte). Troque para true no futuro.
+// Interruptor do cenário Subscription. LIGADO por padrão — ciclo completo de
+// assinatura (criação -> redirect -> webhooks -> tabela Subscriptions). Para
+// desligar, defina como false no wp-config ANTES deste plugin carregar.
 if ( ! defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) ) {
-	define( 'JFB_MP_SUBSCRIPTIONS_ENABLED', false );
+	define( 'JFB_MP_SUBSCRIPTIONS_ENABLED', true );
 }
 
 require JET_FB_MERCADOPAGO_GATEWAY_PATH . 'vendor/autoload.php';

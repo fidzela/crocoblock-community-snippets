@@ -7,17 +7,14 @@
  *  DESTINO (cole por cima):
  *    includes/compatibility/jet-form-builder/logic-repository.php
  *
- *  AQUI É O "INTERRUPTOR" DO SUBSCRIPTION (ativo-mas-inerte):
+ *  INTERRUPTOR DO SUBSCRIPTION (agora LIGADO por padrão):
  *  ---------------------------------------------------------------------------
- *  O cenário só roda se estiver LISTADO em rep_instances(). A classe
- *  Subscription_Logic continua no disco (autoloader feliz, sem fatal), mas só
- *  é registrada se JFB_MP_SUBSCRIPTIONS_ENABLED === true. Por padrão fica de
- *  fora -> o "Subscription" não aparece no editor e nunca é invocado ->
- *  impossível dar erro por causa dele.
- *
- *  Para LIGAR no futuro: defina no arquivo principal do plugin
- *      define( 'JFB_MP_SUBSCRIPTIONS_ENABLED', true );
- *  (e implemente a lógica de Preapproval do Mercado Pago no Subscription_Logic).
+ *  O cenário só roda se estiver LISTADO em rep_instances(). Subscription_Logic é
+ *  registrada quando JFB_MP_SUBSCRIPTIONS_ENABLED === true — o padrão do plugin
+ *  (ver arquivo principal). Sem o registro aqui, escolher "Subscription" no
+ *  editor e enviar o form NÃO faz nada (o cenário não resolve) — foi essa a causa
+ *  do "nada acontece" no submit. Para DESLIGAR, defina a constante como false no
+ *  wp-config antes do plugin carregar.
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */

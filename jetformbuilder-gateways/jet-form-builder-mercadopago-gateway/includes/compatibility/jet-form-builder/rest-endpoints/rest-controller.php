@@ -54,7 +54,8 @@ class Rest_Controller extends Rest_Api_Controller_Base {
 			new Delete_Mercadopago_Plan(),
 		);
 
-		// Gerenciamento de ASSINATURA — só na fase 2 (mantém o boot blindado).
+		// Gerenciamento de ASSINATURA (cancelar/suspender pelo admin). Ligado por
+		// padrão junto com o cenário Subscription (JFB_MP_SUBSCRIPTIONS_ENABLED).
 		if ( defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) && JFB_MP_SUBSCRIPTIONS_ENABLED ) {
 			$routes[] = new Cancel_Subscription();
 			$routes[] = new Subscription_Suspend();

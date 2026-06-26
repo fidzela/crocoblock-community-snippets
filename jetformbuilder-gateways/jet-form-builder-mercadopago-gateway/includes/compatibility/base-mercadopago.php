@@ -75,7 +75,8 @@ trait Base_Mercadopago {
 			Pay_Now_Logic::scenario_id() => __( 'Pay Now', 'jet-form-builder-mercadopago-gateway' ),
 		);
 
-		// Subscription fica INERTE: só entra no dropdown se ligado explicitamente.
+		// Subscription LIGADO por padrão (JFB_MP_SUBSCRIPTIONS_ENABLED). Defina a
+		// constante como false no wp-config para tirar a opção do dropdown.
 		if ( defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) && JFB_MP_SUBSCRIPTIONS_ENABLED ) {
 			$scenarios[ Subscription_Logic::scenario_id() ] = __( 'Subscription', 'jet-form-builder-mercadopago-gateway' );
 		}
