@@ -8,11 +8,18 @@
 ---
 
 ## 0. Documentos deste plugin (ordem de leitura)
-1. **MEMORIA-CONTINUACAO.md** (este) — estado atual, regras, mapa de repositórios, tarefa aberta.
-2. **HANDOFF-FASE-2.md** — plano/decisões (D1/D2/D3), inventário, mapa de risco de fatal, progresso por sessão.
+0. **MARCO-ASSINATURA.md** ⭐ — **LEIA PRIMEIRO.** Marco do projeto (assinatura
+   ponta a ponta funcionando, v2.0.9): ciclo completo, nuances/diferenças vs Stripe,
+   armadilhas resolvidas, setup, itens de core pendentes e PLANO DE AÇÃO de limpeza.
+1. **MEMORIA-CONTINUACAO.md** (este) — estado/regras/mapa de repositórios.
+2. **HANDOFF-FASE-2.md** — plano/decisões (D1/D2/D3), inventário, mapa de risco de fatal.
 3. **REFUND-ARCHITECTURE.md** — desenho do estorno (gap do payment_id, idempotência, webhook).
 4. **TESTING-CHECKLIST.md** — checklist de testes (estabilidade + integração CORE).
 5. **WEBHOOK-SETUP.md** — setup do webhook (x-signature, allowlist de plugins de segurança).
+
+> **Estado em 26/06 (v2.0.9):** pay-now ✅ e **subscription ✅ ponta a ponta**
+> (ACTIVE + cobrança "initial" em Payments + eventos). Pendente do core: renovação
+> (observar), Suspend/Cancel, Refund, "Subscriber attached". Depois: §6 do MARCO.
 
 ---
 
