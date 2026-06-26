@@ -66,6 +66,14 @@ class Plans_Page {
 			true
 		);
 
+		// Só os títulos de seção / linhas de plano; o resto é cx-vui nativo.
+		wp_enqueue_style(
+			$handle,
+			JET_FB_MERCADOPAGO_GATEWAY_URL . 'assets/css/mp-plans-settings.css',
+			array(),
+			JET_FB_MERCADOPAGO_GATEWAY_VERSION
+		);
+
 		wp_localize_script(
 			$handle,
 			'JFB_MP_PLANS',
@@ -88,15 +96,19 @@ class Plans_Page {
 					'fReason'       => __( 'Nome / descrição', 'jet-form-builder-mercadopago-gateway' ),
 					'fAmount'       => __( 'Valor', 'jet-form-builder-mercadopago-gateway' ),
 					'fFrequency'    => __( 'Frequência', 'jet-form-builder-mercadopago-gateway' ),
-					'fType'         => __( 'Tipo', 'jet-form-builder-mercadopago-gateway' ),
+					'fType'         => __( 'Tipo de frequência', 'jet-form-builder-mercadopago-gateway' ),
 					'fCurrency'     => __( 'Moeda', 'jet-form-builder-mercadopago-gateway' ),
 					'months'        => __( 'mês(es)', 'jet-form-builder-mercadopago-gateway' ),
 					'days'          => __( 'dia(s)', 'jet-form-builder-mercadopago-gateway' ),
+					'every'         => __( 'a cada', 'jet-form-builder-mercadopago-gateway' ),
 					'createBtn'     => __( 'Criar plano', 'jet-form-builder-mercadopago-gateway' ),
 					'created'       => __( 'Plano criado!', 'jet-form-builder-mercadopago-gateway' ),
 					'deleted'       => __( 'Plano cancelado.', 'jet-form-builder-mercadopago-gateway' ),
 					'delete'        => __( 'Excluir', 'jet-form-builder-mercadopago-gateway' ),
 					'confirmDelete' => __( 'Cancelar/desativar este plano no Mercado Pago? Assinaturas já ativas continuam; o plano só deixa de aceitar novas.', 'jet-form-builder-mercadopago-gateway' ),
+					'showCancelled'     => __( 'Mostrar excluídos', 'jet-form-builder-mercadopago-gateway' ),
+					/* translators: %d: número de planos cancelados */
+					'showCancelledDesc' => __( 'Exibir também os planos cancelados (%d).', 'jet-form-builder-mercadopago-gateway' ),
 					'noToken'       => __( 'Configure o Access Token em JetFormBuilder → Settings → Payments Gateways → Mercado Pago. Esta aba usa SEMPRE essa chave (server-side).', 'jet-form-builder-mercadopago-gateway' ),
 				),
 			)

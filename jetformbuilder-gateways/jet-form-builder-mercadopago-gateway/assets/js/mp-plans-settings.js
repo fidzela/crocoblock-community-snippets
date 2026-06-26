@@ -3,9 +3,17 @@
  * sem build). Registra-se no SPA de settings via o filtro
  * `jet.fb.register.settings-page.tabs` (mesma mecânica do MailChimp/ActiveCampaign).
  *
- * Estilo "repeater" (como os glossários): cada plano é um card com
- * título / valor / frequência / tipo / moeda / status + excluir, e um formulário
- * para criar novos.
+ * UI/UX 100% NATIVA: usa os componentes globais do framework Croco
+ * (`cx-vui-input`, `cx-vui-select`, `cx-vui-switcher`, `cx-vui-button`), registrados
+ * globalmente por `cxVueUi.registerGlobalComponents(Vue)`. Padrões confirmados lendo
+ * o CORE (não supostos):
+ *   - campo = `cx-vui-*` com `wrapper-css:["equalwidth"]` + `size:"fullwidth"`
+ *     (linha label↔controle 49/49, igual MailChimp/GetResponse/Gateways);
+ *   - botão = `cx-vui-button` com label em `slot="label"`; `button-style`:
+ *       "accent" (azul primário), "accent-border" (azul contornado, secundário),
+ *       "link-error" (#c92c2c, vermelho — excluir);
+ *   - separadores: cada `.cx-vui-component` já tem `border-top:#ececec`; títulos de
+ *     seção e linhas de plano ficam em mp-plans-settings.css com os MESMOS tokens.
  *
  * SEGURANÇA: NÃO trafega Access Token. Os endpoints REST usam SEMPRE a chave do
  * gateway (server-side). O JS só dispara list/create/delete com o nonce REST.
@@ -40,8 +48,8 @@
 		name: 'jfb-mp-plans',
 		// O SPA do JFB injeta `incoming` (dados salvos da aba) e `inner-slugs` como
 		// props em TODA aba (jfb-settings.js: attrs:{incoming,...,"inner-slugs"}).
-		// Declaramos para não vazarem como atributos no <div> raiz. Não os usamos —
-		// esta aba não persiste no store de settings; faz CRUD via REST.
+		// Declaramos para não vazarem como atributos no DOM. Não os usamos — esta aba
+		// não persiste no store de settings; faz CRUD via REST.
 		props: {
 			incoming: { type: [ Object, Array ], default: function () { return {}; } },
 			innerSlugs: { type: Array, default: function () { return []; } }
@@ -53,8 +61,20 @@
 				busy: false,
 				notice: '',
 				noticeType: '',
+				showCancelled: false,
 				form: { reason: '', amount: '', frequency: 1, frequency_type: 'months', currency: 'BRL' }
 			};
+		},
+		computed: {
+			// Planos cancelados/excluídos (flag `disabled` vinda do endpoint).
+			cancelledPlans: function () {
+				return this.plans.filter( function ( p ) { return p.disabled; } );
+			},
+			// O que a lista mostra: ativos sempre; cancelados só com o switcher ligado.
+			visiblePlans: function () {
+				var show = this.showCancelled;
+				return this.plans.filter( function ( p ) { return show || ! p.disabled; } );
+			}
 		},
 		created: function () {
 			this.load();
@@ -72,7 +92,9 @@
 				}
 				self.loading = true;
 				self.setNotice( '' );
-				api( CFG.urls.list, { force_refresh: true } )
+				// include_cancelled: a aba de gestão precisa VER os cancelados (status +
+				// switcher). O editor NÃO manda isso → recebe só os ativos.
+				api( CFG.urls.list, { force_refresh: true, include_cancelled: true } )
 					.then( function ( res ) { self.plans = ( res && res.data ) || []; } )
 					.catch( function ( e ) { self.setNotice( e.message, 'error' ); } )
 					.then( function () { self.loading = false; } );
@@ -111,94 +133,128 @@
 		render: function ( h ) {
 			var self = this;
 
-			function row( label, control ) {
-				return h( 'div', { style: 'display:flex;align-items:center;gap:12px;margin-bottom:12px' }, [
-					h( 'label', { style: 'min-width:130px;font-weight:600' }, label ),
-					control
-				] );
-			}
-
-			function input( key, attrs ) {
-				return h( 'input', {
-					attrs: Object.assign( { type: 'text' }, attrs || {} ),
-					domProps: { value: self.form[ key ] },
-					on: { input: function ( e ) { self.form[ key ] = e.target.value; } },
-					style: 'padding:6px 8px;border:1px solid #8c8f94;border-radius:4px'
+			// --- helpers que montam os componentes NATIVOS cx-vui ----------------
+			// campo de texto/número (linha equalwidth + controle fullwidth)
+			function field( key, label, attrs ) {
+				return h( 'cx-vui-input', {
+					attrs: Object.assign(
+						{ label: label, 'wrapper-css': [ 'equalwidth' ], size: 'fullwidth', value: self.form[ key ] },
+						attrs || {}
+					),
+					on: { input: function ( v ) { self.form[ key ] = v; } }
 				} );
 			}
 
-			// --- lista de planos (repeater) ---
-			var list;
+			// select nativo (options-list = [{value,label}])
+			function select( key, label, options ) {
+				return h( 'cx-vui-select', {
+					attrs: {
+						label: label,
+						'wrapper-css': [ 'equalwidth' ],
+						size: 'fullwidth',
+						'options-list': options,
+						value: self.form[ key ]
+					},
+					on: { input: function ( v ) { self.form[ key ] = v; } }
+				} );
+			}
+
+			// botão nativo; label vai no slot "label" (igual o "Save" do core)
+			function button( label, style, handlers, attrs ) {
+				return h( 'cx-vui-button', {
+					attrs: Object.assign( { 'button-style': style }, attrs || {} ),
+					on: handlers
+				}, [ h( 'span', { attrs: { slot: 'label' }, slot: 'label' }, label ) ] );
+			}
+
+			function sectionTitle( text ) {
+				return h( 'h3', { staticClass: 'jfb-mp-plans__title' }, text );
+			}
+
+			var children = [];
+
+			// ---- intro ---------------------------------------------------------
+			children.push( h( 'p', { staticClass: 'fb-description jfb-mp-plans__intro' }, t.intro || '' ) );
+
+			if ( ! CFG.hasToken ) {
+				children.push( h( 'div', { staticClass: 'cx-vui-notice cx-vui-notice--warning jfb-mp-plans__notice-box' }, t.noToken || '' ) );
+			}
+
+			// ---- seção: planos existentes -------------------------------------
+			children.push( sectionTitle( t.existing || 'Planos existentes' ) );
+
+			// switcher "mostrar excluídos" — só quando há cancelados
+			if ( self.cancelledPlans.length ) {
+				children.push( h( 'cx-vui-switcher', {
+					attrs: {
+						label: t.showCancelled || 'Mostrar excluídos',
+						description: ( t.showCancelledDesc || 'Planos cancelados (%d).' ).replace( '%d', self.cancelledPlans.length ),
+						'wrapper-css': [ 'equalwidth' ],
+						value: self.showCancelled
+					},
+					on: { input: function ( v ) { self.showCancelled = v; } }
+				} ) );
+			}
+
+			// lista (painel cinza nativo)
+			var listInner;
 			if ( self.loading ) {
-				list = [ h( 'div', { style: 'padding:10px;color:#666' }, t.loading || '…' ) ];
-			} else if ( ! self.plans.length ) {
-				list = [ h( 'div', { style: 'padding:10px;color:#666' }, t.empty || 'Nenhum plano.' ) ];
+				listInner = [ h( 'div', { staticClass: 'jfb-mp-plans__empty' }, t.loading || '…' ) ];
+			} else if ( ! self.visiblePlans.length ) {
+				listInner = [ h( 'div', { staticClass: 'jfb-mp-plans__empty' }, t.empty || 'Nenhum plano.' ) ];
 			} else {
-				list = self.plans.map( function ( p ) {
-					var active = ( p.status || 'active' ) === 'active';
-					var unit = p.frequency_type === 'days' ? 'dia(s)' : 'mês(es)';
-					var freq = ( p.frequency && p.frequency_type ) ? ( 'a cada ' + p.frequency + ' ' + unit ) : '—';
+				listInner = self.visiblePlans.map( function ( p ) {
+					var active = ! p.disabled;
+					var unit = p.frequency_type === 'days' ? ( t.days || 'dia(s)' ) : ( t.months || 'mês(es)' );
+					var freq = ( p.frequency && p.frequency_type ) ? ( ( t.every || 'a cada' ) + ' ' + p.frequency + ' ' + unit ) : '—';
 					var val = ( p.currency || 'BRL' ) + ' ' + ( p.amount != null ? Number( p.amount ).toFixed( 2 ) : '—' );
 
-					return h( 'div', { style: 'display:flex;align-items:center;gap:16px;padding:12px 14px;border:1px solid #dcdcde;border-radius:6px;margin-bottom:8px;background:#fff' }, [
-						h( 'div', { style: 'flex:1' }, [
-							h( 'strong', p.reason || '(sem nome)' ),
-							h( 'div', { style: 'font-size:12px;color:#646970;margin:3px 0' }, [
+					return h( 'div', { staticClass: 'jfb-mp-plans__row' }, [
+						h( 'div', { staticClass: 'jfb-mp-plans__row-main' }, [
+							h( 'strong', { staticClass: 'jfb-mp-plans__row-name' }, p.reason || '(sem nome)' ),
+							h( 'div', { staticClass: 'jfb-mp-plans__row-meta' }, [
 								val + ' · ' + freq + ' · ',
-								h( 'span', { style: 'color:' + ( active ? '#1a7f37' : '#b32d2e' ) }, p.status || 'active' )
+								h( 'span', { staticClass: active ? 'jfb-mp-plans__badge is-active' : 'jfb-mp-plans__badge is-cancelled' }, p.status || ( active ? 'active' : 'cancelled' ) )
 							] ),
-							h( 'code', { style: 'font-size:11px;color:#8c8f94' }, p.id )
+							h( 'code', { staticClass: 'jfb-mp-plans__row-id' }, p.id )
 						] ),
-						h( 'button', {
-							attrs: { type: 'button', disabled: ! active },
-							class: 'button button-link-delete',
-							on: { click: function () { self.remove( p.id ); } }
-						}, t.delete || 'Excluir' )
+						button(
+							t.delete || 'Excluir',
+							'link-error',
+							{ click: function () { self.remove( p.id ); } },
+							{ size: 'mini', disabled: ! active }
+						)
 					] );
 				} );
 			}
 
-			var children = [
-				h( 'h2', t.title || 'Mercado Pago — Planos de Assinatura' ),
-				h( 'p', { style: 'color:#555;max-width:760px' }, t.intro || '' )
-			];
-
-			if ( ! CFG.hasToken ) {
-				children.push( h( 'div', { class: 'notice notice-warning', style: 'padding:10px;margin:10px 0' }, t.noToken || '' ) );
-			}
-
-			children.push( h( 'h3', t.existing || 'Planos existentes' ) );
-			children.push( h( 'div', list ) );
-			children.push( h( 'p', [
-				h( 'button', { attrs: { type: 'button', disabled: self.loading }, class: 'button', on: { click: self.load } }, t.refresh || 'Atualizar lista' )
+			children.push( h( 'div', { staticClass: 'cx-vui-inner-panel jfb-mp-plans__list' }, listInner ) );
+			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
+				button( t.refresh || 'Atualizar lista', 'accent-border', { click: self.load }, { disabled: self.loading } )
 			] ) );
 
-			children.push( h( 'h3', { style: 'margin-top:26px' }, t.createTitle || 'Criar novo plano' ) );
-			children.push( row( t.fReason || 'Nome / descrição', input( 'reason', { placeholder: 'Plano Mensal Premium' } ) ) );
-			children.push( row( t.fAmount || 'Valor', input( 'amount', { type: 'number', step: '0.01', min: '0.5', placeholder: '10.00' } ) ) );
-			children.push( row( ( t.fFrequency || 'Frequência' ) + ' / ' + ( t.fType || 'Tipo' ), h( 'div', { style: 'display:flex;gap:8px;align-items:center' }, [
-				input( 'frequency', { type: 'number', min: '1', style: 'width:90px' } ),
-				h( 'select', {
-					domProps: { value: self.form.frequency_type },
-					on: { change: function ( e ) { self.form.frequency_type = e.target.value; } },
-					style: 'padding:6px;border:1px solid #8c8f94;border-radius:4px'
-				}, [
-					h( 'option', { attrs: { value: 'months' } }, t.months || 'mês(es)' ),
-					h( 'option', { attrs: { value: 'days' } }, t.days || 'dia(s)' )
-				] )
-			] ) ) );
-			children.push( row( t.fCurrency || 'Moeda', input( 'currency', { maxlength: '3', style: 'width:90px' } ) ) );
-			children.push( h( 'p', [
-				h( 'button', { attrs: { type: 'button', disabled: self.busy }, class: 'button button-primary', on: { click: self.create } }, t.createBtn || 'Criar plano' )
+			// ---- seção: criar novo plano --------------------------------------
+			children.push( sectionTitle( t.createTitle || 'Criar novo plano' ) );
+			children.push( field( 'reason', t.fReason || 'Nome / descrição', { placeholder: 'Plano Mensal Premium' } ) );
+			children.push( field( 'amount', t.fAmount || 'Valor', { type: 'number', step: '0.01', min: '0.5', placeholder: '10.00' } ) );
+			children.push( field( 'frequency', t.fFrequency || 'Frequência', { type: 'number', min: '1', placeholder: '1' } ) );
+			children.push( select( 'frequency_type', t.fType || 'Tipo de frequência', [
+				{ value: 'months', label: t.months || 'mês(es)' },
+				{ value: 'days', label: t.days || 'dia(s)' }
+			] ) );
+			children.push( field( 'currency', t.fCurrency || 'Moeda', { maxlength: '3' } ) );
+			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
+				button( t.createBtn || 'Criar plano', 'accent', { click: self.create }, { disabled: self.busy } )
 			] ) );
 
+			// ---- notice --------------------------------------------------------
 			if ( self.notice ) {
 				children.push( h( 'div', {
-					style: 'margin-top:12px;font-size:13px;color:' + ( self.noticeType === 'error' ? '#b32d2e' : ( self.noticeType === 'success' ? '#1a7f37' : '#646970' ) )
+					staticClass: 'jfb-mp-plans__notice is-' + ( self.noticeType || 'info' )
 				}, self.notice ) );
 			}
 
-			return h( 'div', { style: 'max-width:860px;padding:8px 4px' }, children );
+			return h( 'section', { staticClass: 'jfb-mp-plans' }, children );
 		}
 	};
 

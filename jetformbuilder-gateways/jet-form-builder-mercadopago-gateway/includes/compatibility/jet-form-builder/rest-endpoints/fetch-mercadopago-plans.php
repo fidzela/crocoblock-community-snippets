@@ -55,6 +55,12 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 		$secret = '' !== $client ? $client : $this->gateway_token();
 		$force  = filter_var( $request->get_param( 'force_refresh' ), FILTER_VALIDATE_BOOLEAN );
 
+		// UI/UX: por padrão devolvemos só os planos ATIVOS (o dropdown do editor não
+		// deve listar planos cancelados/excluídos — não há como recriá-los). A ABA de
+		// settings manda include_cancelled=true para gerir/exibir status (com o switcher
+		// "mostrar excluídos"). O cache guarda a lista COMPLETA; o filtro é na resposta.
+		$include_cancelled = filter_var( $request->get_param( 'include_cancelled' ), FILTER_VALIDATE_BOOLEAN );
+
 		if ( '' === $secret ) {
 			return new WP_Error(
 				'mp_no_token',
@@ -68,7 +74,9 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 		if ( ! $force ) {
 			$cached = get_transient( $cache_key );
 			if ( is_array( $cached ) ) {
-				return rest_ensure_response( array( 'success' => true, 'data' => $cached ) );
+				return rest_ensure_response(
+					array( 'success' => true, 'data' => $this->only_active( $cached, $include_cancelled ) )
+				);
 			}
 		}
 
@@ -116,12 +124,38 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 		$results = ( is_array( $body ) && is_array( $body['results'] ?? null ) ) ? $body['results'] : array();
 		$data    = $this->map_plans( $results );
 
+		// Cacheia a lista COMPLETA (ativos + cancelados); o filtro de visibilidade é
+		// aplicado na resposta conforme o consumidor (editor vs aba settings).
 		set_transient( $cache_key, $data, WEEK_IN_SECONDS );
 
 		return rest_ensure_response(
 			array(
 				'success' => true,
-				'data'    => $data,
+				'data'    => $this->only_active( $data, $include_cancelled ),
+			)
+		);
+	}
+
+	/**
+	 * Mantém apenas planos ativos, a menos que o chamador peça os cancelados.
+	 * "Ativo" = flag `disabled` falsa (status vazio ou 'active'); ver map_plans().
+	 *
+	 * @param array $data              Lista mapeada (completa).
+	 * @param bool  $include_cancelled Se true, devolve tudo (aba de gestão).
+	 *
+	 * @return array
+	 */
+	private function only_active( array $data, bool $include_cancelled ): array {
+		if ( $include_cancelled ) {
+			return $data;
+		}
+
+		return array_values(
+			array_filter(
+				$data,
+				static function ( $plan ) {
+					return empty( $plan['disabled'] );
+				}
 			)
 		);
 	}
