@@ -22,6 +22,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Delete_Mercadopago_Plan extends Rest_Api_Endpoint_Base {
 
+	use Mp_Token_Trait;
+
 	public static function get_rest_base() {
 		return 'delete-mercadopago-plan';
 	}
@@ -37,11 +39,12 @@ class Delete_Mercadopago_Plan extends Rest_Api_Endpoint_Base {
 	public function run_callback( \WP_REST_Request $request ) {
 		$p = (array) ( $request->get_json_params() ?: array() );
 
-		$secret = trim( (string) ( $p['secret'] ?? '' ) );
+		// Token SEMPRE do gateway (server-side); o cliente nunca o envia.
+		$secret = $this->gateway_token();
 		$id     = trim( (string) ( $p['id'] ?? '' ) );
 
 		if ( '' === $secret ) {
-			return new WP_Error( 'mp_no_token', __( 'Access Token vazio.', 'jet-form-builder-mercadopago-gateway' ), array( 'status' => 400 ) );
+			return new WP_Error( 'mp_no_token', __( 'Access Token não configurado no gateway.', 'jet-form-builder-mercadopago-gateway' ), array( 'status' => 400 ) );
 		}
 		if ( '' === $id ) {
 			return new WP_Error( 'mp_no_id', __( 'ID do plano vazio.', 'jet-form-builder-mercadopago-gateway' ), array( 'status' => 400 ) );

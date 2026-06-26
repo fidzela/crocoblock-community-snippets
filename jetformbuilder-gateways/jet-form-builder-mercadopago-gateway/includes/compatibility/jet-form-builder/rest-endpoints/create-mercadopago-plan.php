@@ -23,6 +23,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Create_Mercadopago_Plan extends Rest_Api_Endpoint_Base {
 
+	use Mp_Token_Trait;
+
 	const ENDPOINT = 'https://api.mercadopago.com/preapproval_plan';
 
 	public static function get_rest_base() {
@@ -40,7 +42,8 @@ class Create_Mercadopago_Plan extends Rest_Api_Endpoint_Base {
 	public function run_callback( \WP_REST_Request $request ) {
 		$p = (array) ( $request->get_json_params() ?: array() );
 
-		$secret = trim( (string) ( $p['secret'] ?? '' ) );
+		// Token SEMPRE do gateway (server-side); o cliente nunca o envia.
+		$secret = $this->gateway_token();
 		$reason = trim( (string) ( $p['reason'] ?? '' ) );
 		$amount = round( (float) ( $p['amount'] ?? 0 ), 2 );
 
@@ -52,7 +55,7 @@ class Create_Mercadopago_Plan extends Rest_Api_Endpoint_Base {
 		$back_url = esc_url_raw( (string) ( $p['back_url'] ?? '' ) ) ?: home_url( '/' );
 
 		if ( '' === $secret ) {
-			return new WP_Error( 'mp_no_token', __( 'Access Token vazio.', 'jet-form-builder-mercadopago-gateway' ), array( 'status' => 400 ) );
+			return new WP_Error( 'mp_no_token', __( 'Access Token não configurado no gateway. Defina em JetFormBuilder → Settings → Payments Gateways → Mercado Pago.', 'jet-form-builder-mercadopago-gateway' ), array( 'status' => 400 ) );
 		}
 		if ( '' === $reason ) {
 			return new WP_Error( 'mp_no_reason', __( 'Informe o nome/descrição do plano.', 'jet-form-builder-mercadopago-gateway' ), array( 'status' => 400 ) );

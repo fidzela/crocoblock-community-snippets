@@ -32,6 +32,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 
+	use Mp_Token_Trait;
+
 	const ENDPOINT = 'https://api.mercadopago.com/preapproval_plan/search?limit=100';
 
 	public static function get_rest_base() {
@@ -47,13 +49,16 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 	}
 
 	public function run_callback( \WP_REST_Request $request ) {
-		$secret = trim( (string) $request->get_param( 'secret' ) );
+		// Editor (dropdown) manda o token do form; a aba admin NÃO manda nada ->
+		// cai no token global do gateway (server-side).
+		$client = trim( (string) $request->get_param( 'secret' ) );
+		$secret = '' !== $client ? $client : $this->gateway_token();
 		$force  = filter_var( $request->get_param( 'force_refresh' ), FILTER_VALIDATE_BOOLEAN );
 
 		if ( '' === $secret ) {
 			return new WP_Error(
 				'mp_no_token',
-				__( 'Access Token vazio. Confira as credenciais do gateway — se o token está só no formulário, desligue "Use Global Settings"; se está no global, ligue.', 'jet-form-builder-mercadopago-gateway' ),
+				__( 'Access Token não configurado no gateway (JetFormBuilder → Settings → Payments Gateways → Mercado Pago).', 'jet-form-builder-mercadopago-gateway' ),
 				array( 'status' => 400 )
 			);
 		}

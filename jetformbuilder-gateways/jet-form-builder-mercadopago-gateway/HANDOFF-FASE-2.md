@@ -423,6 +423,32 @@ gateways da assinatura. (A `PayPalRestSubscriptionStatus`, hardcoded p/ PayPal,
   (webhook) → renovação → pausar/cancelar. Ativar os tópicos
   `subscription_preapproval` + `subscription_authorized_payment` no painel MP.
 
+**✅ Gerenciamento de planos (sessão 2026-06-25):** descoberta-chave — os "Planos"
+do PAINEL do MP **não** aparecem na API; só `preapproval_plan` (criados via API)
+populam o dropdown do cenário Subscription. Pay-now em sandbox também foi
+confirmado funcionando (o problema era setup de conta de teste do MP, não o
+código — a base do dia 16 também recusava). Feito:
+- Endpoints REST: `fetch-mercadopago-plans` (enriquecido c/ reason/amount/freq/
+  status), `create-mercadopago-plan` (POST /preapproval_plan), `delete-mercadopago-plan`
+  (PUT status=cancelled — o MP não APAGA, desativa). Registrados sempre.
+- **Aba "Mercado Pago Plans"** no SPA de settings do JFB (não mais página de menu
+  standalone, que foi removida): `Admin\Plans_Page` enfileira `mp-plans-settings.js`
+  no hook `jet-fb/admin-pages/before-assets/jfb-settings`; o JS registra a aba via
+  o filtro `jet.fb.register.settings-page.tabs` (componente **Vue 2 render-function**,
+  sem build — estilo repeater como os glossários). Frequência e Tipo separados.
+- **SEGURANÇA:** o Access Token NUNCA trafega pelo cliente. Os endpoints usam
+  SEMPRE a chave do gateway server-side (`Mp_Token_Trait` → `Controller::get_credentials`).
+  O editor (dropdown) ainda envia o token do form; a aba não envia nada (cai no global).
+
+**⏭️ Tarefas futuras (pedidas pelo dono):**
+- **Botão "excluir log":** o MP só CANCELA o plano (fica `status=cancelled` na
+  lista). Futuro: opção de sumir/arquivar os cancelados da visão.
+- **Aba de settings "Mercado Pago" extensível:** pensada p/ crescer (ex.: chave
+  Pix e outras configs MP-native). Estruturada p/ isso; não implementar agora.
+- **Refund:** ainda pendente, após a discussão de segurança.
+- **Validar a aba Vue** no SPA real do JFB (não testável aqui): se não renderizar,
+  conferir o shape do tab (`{component, title}`) / versão do Vue.
+
 ### Critérios de aceite (Definition of Done — Fase 2)
 - [ ] `JFB_MP_SUBSCRIPTIONS_ENABLED=true` **ativa sem fatal** e sem quebrar a REST.
 - [ ] Criar → autorizar → 1ª cobrança → renovação registradas (DB + eventos).
