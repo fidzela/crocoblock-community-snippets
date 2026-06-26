@@ -5,15 +5,19 @@
  * ============================================================================
  *
  *  Replica o cenário de assinatura do addon Stripe (Checkout Session
- *  mode=subscription sobre um Price recorrente pré-existente), trocando a API
- *  pelo equivalente do Mercado Pago: uma **Preapproval associada a um Plano**
- *  (`preapproval_plan_id`).
+ *  mode=subscription — cartão informado na PÁGINA do gateway), trocando a API
+ *  pelo equivalente do Mercado Pago: uma **Preapproval SEM plano, com
+ *  `auto_recurring` INLINE** (devolve `init_point` sem `card_token_id`). O plano
+ *  (preapproval_plan) escolhido no editor é o TEMPLATE: lemos seus termos
+ *  (valor/frequência/moeda) e os enviamos inline. (Por que não mandamos o
+ *  `preapproval_plan_id`: o MP exigiria `card_token_id` — ver Create_Preapproval.)
  *
  *  FLUXO (espelha o Stripe):
  *    after_actions()
  *      1. create_subscription()  grava SubscriptionModel (APPROVAL_PENDING) +
- *                                RecurringCyclesModel (lendo o plano no MP)
- *      2. create_resource()      POST /preapproval -> { id, init_point, status }
+ *                                RecurringCyclesModel (lendo os termos do plano)
+ *      2. create_resource()      POST /preapproval (auto_recurring inline)
+ *                                -> { id, init_point, status }
  *      3. save_resource()        grava billing_id = id da preapproval (o MP
  *                                devolve na hora — vantagem vs. Stripe, onde o id
  *                                só vinha pelo webhook checkout.session.completed)
@@ -71,6 +75,13 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	protected $subscription_id;
 
 	/**
+	 * Plano (preapproval_plan) lido do MP, memoizado por submit.
+	 *
+	 * @var array|null
+	 */
+	protected $plan_data;
+
+	/**
 	 * Token do retorno: o id INTERNO da assinatura (anexado à back_url).
 	 *
 	 * @return string
@@ -95,7 +106,14 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	public function after_actions() {
 		$this->subscription_id = $this->create_subscription();
 
-		$preapproval = $this->create_resource();
+		try {
+			$preapproval = $this->create_resource();
+		} catch ( Gateway_Exception $e ) {
+			// Falhou no MP -> não deixa assinatura órfã (APPROVAL_PENDING) na tabela.
+			$this->delete_subscription( $this->subscription_id );
+
+			throw $e;
+		}
 
 		$this->save_resource( $preapproval );
 
@@ -174,18 +192,7 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 		// falha aqui NÃO pode abortar a criação — a validação autoritativa do
 		// plano acontece em create_resource() (o MP rejeita plano inválido).
 		try {
-			$plan_id = $this->get_plan_id();
-
-			if ( '' === (string) $plan_id ) {
-				return;
-			}
-
-			$plan = ( new Retrieve_Preapproval_Plan() )
-				->set_bearer_auth( jet_fb_gateway_current()->current_gateway( 'secret' ) )
-				->set_path( array( 'id' => $plan_id ) )
-				->send_request();
-
-			$auto = $plan['auto_recurring'] ?? array();
+			$auto = $this->fetch_plan_data()['auto_recurring'] ?? array();
 
 			if ( empty( $auto ) ) {
 				return;
@@ -219,9 +226,20 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	public function create_resource() {
 		$controller = jet_fb_gateway_current();
 
+		// Termos vêm do PLANO escolhido (template) e vão INLINE na preapproval —
+		// é o que habilita o init_point sem card_token (ver Create_Preapproval).
+		$auto_recurring = $this->resolve_auto_recurring();
+
+		if ( empty( $auto_recurring ) ) {
+			throw new Gateway_Exception(
+				__( 'Plano de assinatura inválido ou sem termos de cobrança. Selecione um plano válido na ação "Subscription".', 'jet-form-builder-mercadopago-gateway' )
+			);
+		}
+
 		$request = ( new Create_Preapproval() )
 			->set_bearer_auth( $controller->current_gateway( 'secret' ) )
-			->set_plan_id( $this->get_plan_id() )
+			->set_auto_recurring( $auto_recurring )
+			->set_reason( $this->resolve_plan_reason() )
 			->set_payer_email( $this->resolve_payer_email() )
 			->set_external_reference( $this->generate_external_reference() )
 			->set_back_url( $this->get_referrer_url( Base_Gateway::SUCCESS_TYPE ) );
@@ -235,6 +253,88 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 		}
 
 		return $preapproval;
+	}
+
+	/**
+	 * Lê o plano (preapproval_plan) escolhido — memoizado (1 GET por submit) e
+	 * reaproveitado pelo ciclo recorrente. Só memoiza sucesso (falha = re-tenta).
+	 *
+	 * @return array
+	 */
+	protected function fetch_plan_data(): array {
+		if ( is_array( $this->plan_data ) && ! empty( $this->plan_data ) ) {
+			return $this->plan_data;
+		}
+
+		$plan_id = $this->get_plan_id();
+
+		if ( '' === (string) $plan_id ) {
+			return array();
+		}
+
+		try {
+			$plan = ( new Retrieve_Preapproval_Plan() )
+				->set_bearer_auth( jet_fb_gateway_current()->current_gateway( 'secret' ) )
+				->set_path( array( 'id' => $plan_id ) )
+				->send_request();
+
+			if ( ! is_array( $plan ) || isset( $plan['error'] ) ) {
+				return array();
+			}
+
+			return $this->plan_data = $plan;
+		} catch ( \Throwable $e ) {
+			return array();
+		}
+	}
+
+	/**
+	 * auto_recurring (inline) a partir dos termos do plano escolhido.
+	 *
+	 * @return array
+	 */
+	protected function resolve_auto_recurring(): array {
+		$auto = $this->fetch_plan_data()['auto_recurring'] ?? array();
+
+		if ( empty( $auto ) || ! isset( $auto['transaction_amount'] ) ) {
+			return array();
+		}
+
+		return array(
+			'frequency'          => (int) ( $auto['frequency'] ?? 1 ),
+			'frequency_type'     => (string) ( $auto['frequency_type'] ?? 'months' ),
+			'transaction_amount' => (float) $auto['transaction_amount'],
+			'currency_id'        => (string) ( $auto['currency_id'] ?? 'BRL' ),
+		);
+	}
+
+	/**
+	 * Nome/descrição do plano para a `reason` da assinatura.
+	 *
+	 * @return string
+	 */
+	protected function resolve_plan_reason(): string {
+		return (string) ( $this->fetch_plan_data()['reason'] ?? __( 'Subscription', 'jet-form-builder-mercadopago-gateway' ) );
+	}
+
+	/**
+	 * Remove a assinatura local (best-effort) — usado p/ não deixar órfã quando o
+	 * MP recusa a criação. O FK ON DELETE CASCADE remove o ciclo recorrente junto.
+	 *
+	 * @param int $id
+	 *
+	 * @return void
+	 */
+	protected function delete_subscription( $id ) {
+		if ( ! $id ) {
+			return;
+		}
+
+		try {
+			( new SubscriptionModel() )->delete( array( 'id' => $id ) );
+		} catch ( \Throwable $e ) {
+			return;
+		}
 	}
 
 	/**

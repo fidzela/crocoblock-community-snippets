@@ -5,22 +5,30 @@
  * ============================================================================
  *
  *  Espelha o Create_Checkout_Session do pay-now, mas para o cenário de
- *  ASSINATURA. Replica o modelo do Stripe (Checkout Session mode=subscription
- *  com um Price recorrente pré-existente) usando o equivalente do Mercado Pago:
- *  uma Preapproval ASSOCIADA A UM PLANO (`preapproval_plan_id`).
+ *  ASSINATURA. Replica o modelo do Stripe (Checkout Session mode=subscription —
+ *  o pagador informa o cartão na PÁGINA do gateway) usando o equivalente do
+ *  Mercado Pago: uma Preapproval SEM plano, com `auto_recurring` INLINE, que
+ *  devolve `init_point` (checkout hospedado do MP).
+ *
+ *  POR QUE SEM `preapproval_plan_id` (corrige "card_token_id is required"):
+ *  ---------------------------------------------------------------------------
+ *  No MP, criar `/preapproval` COM `preapproval_plan_id` e SEM `card_token_id` é
+ *  o fluxo DIRETO -> o MP exige o card token (cartão tokenizado no SEU site via
+ *  Bricks/MP.js). Isso NÃO é o fluxo de redirect. O fluxo de redirect (cartão na
+ *  página do MP, igual ao Stripe Checkout) é a preapproval SEM plano, com
+ *  `auto_recurring` inline -> devolve `init_point`, sem card token.
+ *  O "plano" do nosso UI vira o TEMPLATE: o subscription-logic lê os termos do
+ *  preapproval_plan (valor/frequência/moeda) e os envia inline aqui.
  *
  *  MAPA Stripe -> Mercado Pago:
  *    POST v1/checkout/sessions (mode=subscription)  ->  POST /preapproval
- *    line_items[].price = <price_id>                ->  preapproval_plan_id = <plan id>
+ *    line_items[].price (Price recorrente)          ->  auto_recurring (inline)
  *    session.url (redirect)                         ->  init_point (redirect)
  *    metadata.subscription_id                       ->  external_reference
  *
  *  IMPORTANTE (divergência do Stripe): a Preapproval do MP EXIGE `payer_email`
  *  no corpo (o Stripe coletava o e-mail no próprio checkout). Resolvemos isso no
  *  subscription-logic (campo do form / usuário logado / filtro).
- *
- *  Sem `card_token_id`, o MP devolve `init_point` para o pagador AUTORIZAR a
- *  assinatura — exatamente como o init_point do pay-now.
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
@@ -37,8 +45,8 @@ class Create_Preapproval extends Base_Action {
 
 	protected $method = 'POST';
 
-	protected $plan_id            = '';
-	protected $payer_email        = '';
+	protected $auto_recurring    = array();
+	protected $payer_email       = '';
 	protected $external_reference = '';
 	protected $back_url           = '';
 	protected $reason             = '';
@@ -47,8 +55,16 @@ class Create_Preapproval extends Base_Action {
 		return 'preapproval';
 	}
 
-	public function set_plan_id( $id ) {
-		$this->plan_id = (string) $id;
+	/**
+	 * Termos de cobrança inline (substitui o preapproval_plan_id). Espera:
+	 * frequency, frequency_type, transaction_amount, currency_id.
+	 *
+	 * @param array $auto_recurring
+	 *
+	 * @return $this
+	 */
+	public function set_auto_recurring( array $auto_recurring ) {
+		$this->auto_recurring = $auto_recurring;
 
 		return $this;
 	}
@@ -78,13 +94,17 @@ class Create_Preapproval extends Base_Action {
 	}
 
 	protected function build_body(): array {
+		// Preapproval SEM plano (auto_recurring inline) -> init_point sem card token.
 		$body = array(
-			'preapproval_plan_id' => $this->plan_id,
-			'payer_email'         => $this->payer_email,
-			'external_reference'  => $this->external_reference,
-			'back_url'            => $this->back_url,
-			'status'              => 'pending',
+			'payer_email'        => $this->payer_email,
+			'external_reference' => $this->external_reference,
+			'back_url'           => $this->back_url,
+			'status'             => 'pending',
 		);
+
+		if ( ! empty( $this->auto_recurring ) ) {
+			$body['auto_recurring'] = $this->auto_recurring;
+		}
 
 		if ( '' !== $this->reason ) {
 			$body['reason'] = $this->reason;
