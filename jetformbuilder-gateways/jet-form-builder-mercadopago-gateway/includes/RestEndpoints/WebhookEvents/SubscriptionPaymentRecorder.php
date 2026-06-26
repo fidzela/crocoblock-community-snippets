@@ -32,6 +32,7 @@ use Jet_FB_Paypal\DbModels\SubscriptionToPayerShipping;
 use Jet_FB_Paypal\Logic\SubscribeNow;
 use Jet_FB_Paypal\QueryViews\PaymentsBySubscription;
 use Jet_FB_Paypal\QueryViews\PaymentsWithSales;
+use Jet_FB_Paypal\QueryViews\SubscriptionPayerShipping;
 use Jet_FB_Paypal\Resources\Subscription;
 use Jet_FB_Paypal\Utils\SubscriptionUtils;
 use Jet_Form_Builder\Actions\Events\Gateway_Success\Gateway_Success_Event;
@@ -40,6 +41,7 @@ use Jet_Form_Builder\Gateways\Base_Gateway;
 use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payer_Shipping_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
+use Jet_Form_Builder\Gateways\Db_Models\Payment_To_Payer_Shipping_Model;
 use Jet_Form_Builder\Gateways\Query_Views\Payment_With_Record_View;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -103,10 +105,50 @@ class SubscriptionPaymentRecorder {
 			$this->attach_payer( $subscription, $payer );
 		}
 
+		// Vincula ESTA cobrança ao pagador (coluna "Payer" da tabela Payments + o
+		// e-mail no popup de refund de Payment Details). O Stripe faz igual no
+		// InvoicePaid: pega o payer_shipping da assinatura e liga ao payment.
+		$this->link_payment_to_payer( (int) $subscription['id'], $payment_row_id );
+
 		$event = $is_renewal ? RenewalPaymentEvent::class : Gateway_Success_Event::class;
 		SubscriptionUtils::execute_event_for_subscription( $subscription['id'], $event );
 
 		return 'completed (' . $type . ')';
+	}
+
+	/**
+	 * Liga o Payment_Model ao payer_shipping da assinatura (Payment_To_Payer_Shipping)
+	 * — é o que a coluna "Payer" da tabela de Payments resolve. Roda em TODA cobrança
+	 * (initial e renovação). Best-effort.
+	 *
+	 * @param int $subscription_id
+	 * @param int $payment_row_id
+	 *
+	 * @return void
+	 */
+	private function link_payment_to_payer( int $subscription_id, int $payment_row_id ) {
+		if ( ! $subscription_id || ! $payment_row_id ) {
+			return;
+		}
+
+		try {
+			$pair = SubscriptionPayerShipping::findOne(
+				array( 'subscription_id' => $subscription_id )
+			)->query()->query_one();
+
+			if ( empty( $pair['payer_shipping_id'] ) ) {
+				return;
+			}
+
+			( new Payment_To_Payer_Shipping_Model() )->insert(
+				array(
+					'payment_id'        => $payment_row_id,
+					'payer_shipping_id' => $pair['payer_shipping_id'],
+				)
+			);
+		} catch ( \Throwable $e ) {
+			WebhookConfig::log( 'Payment->payer link failed.', array( 'error' => $e->getMessage() ) );
+		}
 	}
 
 	/**
