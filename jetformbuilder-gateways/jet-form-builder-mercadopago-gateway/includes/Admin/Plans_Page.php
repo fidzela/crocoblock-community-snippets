@@ -55,23 +55,42 @@ class Plans_Page {
 		return (string) ( $creds['secret'] ?? '' );
 	}
 
+	/**
+	 * Versão do asset = mtime do arquivo. Garante cache-bust automático a cada
+	 * alteração/reinstalação: o `?ver=` muda sozinho. Sem isto, o navegador serve o
+	 * JS/CSS VELHO do cache (mesmo `?ver` do plugin) mesmo após reinstalar — foi
+	 * exatamente o que aconteceu (PHP/endpoint novos, mas a aba renderizava o JS antigo).
+	 *
+	 * @param string $rel Caminho relativo do asset dentro do plugin.
+	 *
+	 * @return string
+	 */
+	private static function asset_ver( string $rel ): string {
+		$path  = JET_FB_MERCADOPAGO_GATEWAY_PATH . $rel;
+		$mtime = file_exists( $path ) ? filemtime( $path ) : 0;
+
+		return $mtime ? (string) $mtime : JET_FB_MERCADOPAGO_GATEWAY_VERSION;
+	}
+
 	public static function enqueue() {
-		$handle = 'jfb-mp-plans-settings';
+		$handle  = 'jfb-mp-plans-settings';
+		$js_rel  = 'assets/js/mp-plans-settings.js';
+		$css_rel = 'assets/css/mp-plans-settings.css';
 
 		wp_enqueue_script(
 			$handle,
-			JET_FB_MERCADOPAGO_GATEWAY_URL . 'assets/js/mp-plans-settings.js',
+			JET_FB_MERCADOPAGO_GATEWAY_URL . $js_rel,
 			array( 'wp-hooks', 'wp-i18n' ),
-			JET_FB_MERCADOPAGO_GATEWAY_VERSION,
+			self::asset_ver( $js_rel ),
 			true
 		);
 
 		// Só os títulos de seção / linhas de plano; o resto é cx-vui nativo.
 		wp_enqueue_style(
 			$handle,
-			JET_FB_MERCADOPAGO_GATEWAY_URL . 'assets/css/mp-plans-settings.css',
+			JET_FB_MERCADOPAGO_GATEWAY_URL . $css_rel,
 			array(),
-			JET_FB_MERCADOPAGO_GATEWAY_VERSION
+			self::asset_ver( $css_rel )
 		);
 
 		wp_localize_script(
@@ -86,7 +105,9 @@ class Plans_Page {
 					'delete' => rest_url( self::REST_NS . '/delete-mercadopago-plan' ),
 				),
 				'i18n'     => array(
-					'title'         => __( 'Mercado Pago Plans', 'jet-form-builder-mercadopago-gateway' ),
+					// `title` = label da ABA (lateral). `pageTitle` = título no topo do conteúdo.
+					'title'         => __( 'Mercado Pago Settings', 'jet-form-builder-mercadopago-gateway' ),
+					'pageTitle'     => __( 'Mercado Pago Gateway', 'jet-form-builder-mercadopago-gateway' ),
 					'intro'         => __( 'Crie, veja e exclua os planos de assinatura (preapproval_plan) da API. Os "Planos" criados no PAINEL do Mercado Pago NÃO aparecem na API e não servem para a integração — use os daqui. São estes que populam o dropdown do cenário "Subscription". A chave usada é SEMPRE a do gateway (Payments Gateways), server-side.', 'jet-form-builder-mercadopago-gateway' ),
 					'existing'      => __( 'Planos existentes', 'jet-form-builder-mercadopago-gateway' ),
 					'refresh'       => __( 'Atualizar lista', 'jet-form-builder-mercadopago-gateway' ),
@@ -102,6 +123,7 @@ class Plans_Page {
 					'days'          => __( 'dia(s)', 'jet-form-builder-mercadopago-gateway' ),
 					'every'         => __( 'a cada', 'jet-form-builder-mercadopago-gateway' ),
 					'createBtn'     => __( 'Criar plano', 'jet-form-builder-mercadopago-gateway' ),
+					'required'      => __( 'Preencha os campos obrigatórios:', 'jet-form-builder-mercadopago-gateway' ),
 					'created'       => __( 'Plano criado!', 'jet-form-builder-mercadopago-gateway' ),
 					'deleted'       => __( 'Plano cancelado.', 'jet-form-builder-mercadopago-gateway' ),
 					'delete'        => __( 'Excluir', 'jet-form-builder-mercadopago-gateway' ),

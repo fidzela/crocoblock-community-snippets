@@ -9,7 +9,18 @@
  */
 
 .jfb-mp-plans {
-	max-width: 860px;
+	/* Sem max-width: a aba alarga conforme o container (igual MailChimp/User
+	   Journey). O padding inferior evita o botão "Criar plano" colado na borda. */
+	padding-bottom: 28px;
+}
+
+/* título da página (topo do conteúdo) */
+.jfb-mp-plans__page-title {
+	margin: 0 0 4px;
+	font-size: 18px;
+	line-height: 24px;
+	font-weight: 600;
+	color: #1d2327;
 }
 
 .jfb-mp-plans__intro {

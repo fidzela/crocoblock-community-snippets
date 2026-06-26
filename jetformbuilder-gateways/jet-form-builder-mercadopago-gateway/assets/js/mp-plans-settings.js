@@ -24,6 +24,19 @@
 	var CFG = window.JFB_MP_PLANS || { urls: {}, i18n: {}, hasToken: false };
 	var t = CFG.i18n || {};
 
+	// Moedas aceitas pelo Mercado Pago (uma por país onde o MP opera). Evita digitar
+	// errado / deixar em branco. Em assinatura (preapproval_plan) a moeda precisa ser
+	// a do país da conta — por isso um select fechado em vez de texto livre.
+	var CURRENCIES = [
+		{ value: 'BRL', label: 'BRL — Real (Brasil)' },
+		{ value: 'ARS', label: 'ARS — Peso (Argentina)' },
+		{ value: 'CLP', label: 'CLP — Peso (Chile)' },
+		{ value: 'COP', label: 'COP — Peso (Colômbia)' },
+		{ value: 'MXN', label: 'MXN — Peso (México)' },
+		{ value: 'PEN', label: 'PEN — Sol (Peru)' },
+		{ value: 'UYU', label: 'UYU — Peso (Uruguai)' }
+	];
+
 	if ( ! window.wp || ! window.wp.hooks || ! window.wp.hooks.addFilter ) {
 		return;
 	}
@@ -101,6 +114,20 @@
 			},
 			create: function () {
 				var self = this;
+				var f = self.form;
+
+				// Todos os campos são obrigatórios (defesa na UI; o endpoint também valida).
+				var missing = [];
+				if ( ! String( f.reason ).trim() ) { missing.push( t.fReason || 'Nome' ); }
+				if ( ! ( Number( f.amount ) > 0 ) ) { missing.push( t.fAmount || 'Valor' ); }
+				if ( ! ( Number( f.frequency ) > 0 ) ) { missing.push( t.fFrequency || 'Frequência' ); }
+				if ( ! f.frequency_type ) { missing.push( t.fType || 'Tipo' ); }
+				if ( ! f.currency ) { missing.push( t.fCurrency || 'Moeda' ); }
+				if ( missing.length ) {
+					self.setNotice( ( t.required || 'Preencha os campos obrigatórios:' ) + ' ' + missing.join( ', ' ), 'error' );
+					return;
+				}
+
 				self.busy = true;
 				self.setNotice( t.loading || '…' );
 				api( CFG.urls.create, {
@@ -173,7 +200,8 @@
 
 			var children = [];
 
-			// ---- intro ---------------------------------------------------------
+			// ---- título + intro ------------------------------------------------
+			children.push( h( 'h2', { staticClass: 'jfb-mp-plans__page-title' }, t.pageTitle || 'Mercado Pago Gateway' ) );
 			children.push( h( 'p', { staticClass: 'fb-description jfb-mp-plans__intro' }, t.intro || '' ) );
 
 			if ( ! CFG.hasToken ) {
@@ -242,7 +270,7 @@
 				{ value: 'months', label: t.months || 'mês(es)' },
 				{ value: 'days', label: t.days || 'dia(s)' }
 			] ) );
-			children.push( field( 'currency', t.fCurrency || 'Moeda', { maxlength: '3' } ) );
+			children.push( select( 'currency', t.fCurrency || 'Moeda', CURRENCIES ) );
 			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
 				button( t.createBtn || 'Criar plano', 'accent', { click: self.create }, { disabled: self.busy } )
 			] ) );
