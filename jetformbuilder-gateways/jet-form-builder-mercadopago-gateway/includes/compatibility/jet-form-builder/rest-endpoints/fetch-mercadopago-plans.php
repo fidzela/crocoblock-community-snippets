@@ -188,6 +188,10 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 			$frequency_type = (string) ( $auto['frequency_type'] ?? '' );
 			$status         = (string) ( $plan['status'] ?? '' );
 			$reason         = (string) ( $plan['reason'] ?? $id );
+			// Datas do MP (ISO 8601). date_created = criação; last_modified vira a
+			// "data de exclusão" quando o plano foi cancelado (desativado pelo dono).
+			$date_created   = (string) ( $plan['date_created'] ?? '' );
+			$last_modified  = (string) ( $plan['last_modified'] ?? '' );
 
 			$label = $reason;
 
@@ -213,6 +217,8 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 				'frequency'      => $frequency,
 				'frequency_type' => $frequency_type,
 				'status'         => $status,
+				'date_created'   => $date_created,
+				'last_modified'  => $last_modified,
 			);
 		}
 

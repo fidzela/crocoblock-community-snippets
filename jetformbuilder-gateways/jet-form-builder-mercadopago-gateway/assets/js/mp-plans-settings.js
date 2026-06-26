@@ -37,6 +37,50 @@
 		{ value: 'UYU', label: 'UYU — Peso (Uruguai)' }
 	];
 
+	// Formatação POR MOEDA (símbolo, casas decimais e separadores). Em vez de tudo
+	// herdar o formato BRL, cada moeda formata do seu jeito. CLP não usa centavos.
+	// (Estrutura local da aba; a formatação GLOBAL — Payments/Subscriptions — vira
+	// um módulo à parte, ver MARCO-ASSINATURA §6.)
+	var CURRENCY_FMT = {
+		BRL: { symbol: 'R$',  decimals: 2, dec: ',', thou: '.' },
+		ARS: { symbol: '$',   decimals: 2, dec: ',', thou: '.' },
+		CLP: { symbol: '$',   decimals: 0, dec: ',', thou: '.' },
+		COP: { symbol: '$',   decimals: 2, dec: ',', thou: '.' },
+		MXN: { symbol: '$',   decimals: 2, dec: '.', thou: ',' },
+		PEN: { symbol: 'S/',  decimals: 2, dec: '.', thou: ',' },
+		UYU: { symbol: '$U',  decimals: 2, dec: ',', thou: '.' }
+	};
+
+	function moneyFmt( currency ) {
+		return CURRENCY_FMT[ currency ] || CURRENCY_FMT.BRL;
+	}
+
+	// Formata um número conforme a moeda: símbolo + milhar + decimal corretos.
+	function formatMoney( value, currency ) {
+		var f = moneyFmt( currency );
+		var n = Number( value );
+
+		if ( ! isFinite( n ) ) {
+			n = 0;
+		}
+
+		var parts = n.toFixed( f.decimals ).split( '.' );
+		parts[ 0 ] = parts[ 0 ].replace( /\B(?=(\d{3})+(?!\d))/g, f.thou );
+
+		return f.symbol + ' ' + ( parts.length > 1 ? parts.join( f.dec ) : parts[ 0 ] );
+	}
+
+	// Data ISO -> dd/mm/aaaa (pt-BR). Vazio se não houver/for inválida.
+	function formatDate( iso ) {
+		if ( ! iso ) {
+			return '';
+		}
+
+		var d = new Date( iso );
+
+		return isNaN( d.getTime() ) ? '' : d.toLocaleDateString( 'pt-BR' );
+	}
+
 	if ( ! window.wp || ! window.wp.hooks || ! window.wp.hooks.addFilter ) {
 		return;
 	}
@@ -75,6 +119,7 @@
 				notice: '',
 				noticeType: '',
 				showCancelled: false,
+				showHelp: false,
 				form: { reason: '', amount: '', frequency: 1, frequency_type: 'months', currency: 'BRL' }
 			};
 		},
@@ -96,6 +141,9 @@
 			setNotice: function ( msg, type ) {
 				this.notice = msg || '';
 				this.noticeType = type || '';
+			},
+			toggleHelp: function ( state ) {
+				this.showHelp = ( true === state || false === state ) ? state : ! this.showHelp;
 			},
 			load: function () {
 				var self = this;
@@ -202,7 +250,14 @@
 
 			// ---- título + intro ------------------------------------------------
 			children.push( h( 'h2', { staticClass: 'jfb-mp-plans__page-title' }, t.pageTitle || 'Mercado Pago Gateway' ) );
-			children.push( h( 'p', { staticClass: 'fb-description jfb-mp-plans__intro' }, t.intro || '' ) );
+			children.push( h( 'p', { staticClass: 'fb-description jfb-mp-plans__intro' }, [
+				( t.intro || '' ) + ' ',
+				h( 'a', {
+					attrs: { href: '#' },
+					staticClass: 'jfb-mp-plans__help-link',
+					on: { click: function ( e ) { e.preventDefault(); self.toggleHelp( true ); } }
+				}, t.helpLink || 'Como funciona? →' )
+			] ) );
 
 			if ( ! CFG.hasToken ) {
 				children.push( h( 'div', { staticClass: 'cx-vui-notice cx-vui-notice--warning jfb-mp-plans__notice-box' }, t.noToken || '' ) );
@@ -235,15 +290,25 @@
 					var active = ! p.disabled;
 					var unit = p.frequency_type === 'days' ? ( t.days || 'dia(s)' ) : ( t.months || 'mês(es)' );
 					var freq = ( p.frequency && p.frequency_type ) ? ( ( t.every || 'a cada' ) + ' ' + p.frequency + ' ' + unit ) : '—';
-					var val = ( p.currency || 'BRL' ) + ' ' + ( p.amount != null ? Number( p.amount ).toFixed( 2 ) : '—' );
+					var val = ( p.amount != null ) ? formatMoney( p.amount, p.currency || 'BRL' ) : '—';
 
-					return h( 'div', { staticClass: 'jfb-mp-plans__row' }, [
+					// Datas. "Excluído" só vale para planos DESATIVADOS PELO DONO daqui
+					// (nós só cancelamos via UI), por isso a nomenclatura é explícita —
+					// não confundir com status interno do MP.
+					var created = formatDate( p.date_created );
+					var endedOn = active ? '' : formatDate( p.last_modified );
+					var dates   = [];
+					if ( created ) { dates.push( ( t.createdOn || 'Criado em' ) + ' ' + created ); }
+					if ( endedOn ) { dates.push( ( t.cancelledOn || 'Excluído em' ) + ' ' + endedOn ); }
+
+					return h( 'div', { staticClass: 'jfb-mp-plans__row' + ( active ? '' : ' is-cancelled' ) }, [
 						h( 'div', { staticClass: 'jfb-mp-plans__row-main' }, [
 							h( 'strong', { staticClass: 'jfb-mp-plans__row-name' }, p.reason || '(sem nome)' ),
 							h( 'div', { staticClass: 'jfb-mp-plans__row-meta' }, [
 								val + ' · ' + freq + ' · ',
-								h( 'span', { staticClass: active ? 'jfb-mp-plans__badge is-active' : 'jfb-mp-plans__badge is-cancelled' }, p.status || ( active ? 'active' : 'cancelled' ) )
+								h( 'span', { staticClass: active ? 'jfb-mp-plans__badge is-active' : 'jfb-mp-plans__badge is-cancelled' }, active ? ( t.statusActive || 'Ativo' ) : ( t.statusCancelled || 'Excluído pelo dono' ) )
 							] ),
+							dates.length ? h( 'div', { staticClass: 'jfb-mp-plans__row-dates' }, dates.join( ' · ' ) ) : null,
 							h( 'code', { staticClass: 'jfb-mp-plans__row-id' }, p.id )
 						] ),
 						button(
@@ -262,15 +327,34 @@
 			] ) );
 
 			// ---- seção: criar novo plano --------------------------------------
+			// Ordem: a MOEDA vem antes do VALOR — é ela que define como o valor é
+			// formatado (símbolo/decimais), então o valor "herda" o formato da moeda
+			// escolhida (não mais sempre BRL).
 			children.push( sectionTitle( t.createTitle || 'Criar novo plano' ) );
 			children.push( field( 'reason', t.fReason || 'Nome / descrição', { placeholder: 'Plano Mensal Premium' } ) );
-			children.push( field( 'amount', t.fAmount || 'Valor', { type: 'number', step: '0.01', min: '0.5', placeholder: '10.00' } ) );
+			children.push( select( 'currency', t.fCurrency || 'Moeda', CURRENCIES ) );
+
+			var curFmt = moneyFmt( self.form.currency );
+			children.push( field( 'amount', t.fAmount || 'Valor do plano', {
+				type: 'number',
+				step: curFmt.decimals ? '0.01' : '1',
+				min: '0',
+				placeholder: curFmt.decimals ? '10.00' : '10'
+			} ) );
+
+			// Preview dinâmico: mostra como o valor fica formatado NA MOEDA escolhida.
+			if ( '' !== String( self.form.amount ) && Number( self.form.amount ) > 0 ) {
+				children.push( h( 'div', { staticClass: 'jfb-mp-plans__amount-preview' }, [
+					( t.willCharge || 'Valor formatado:' ) + ' ',
+					h( 'strong', formatMoney( self.form.amount, self.form.currency ) )
+				] ) );
+			}
+
 			children.push( field( 'frequency', t.fFrequency || 'Frequência', { type: 'number', min: '1', placeholder: '1' } ) );
 			children.push( select( 'frequency_type', t.fType || 'Tipo de frequência', [
 				{ value: 'months', label: t.months || 'mês(es)' },
 				{ value: 'days', label: t.days || 'dia(s)' }
 			] ) );
-			children.push( select( 'currency', t.fCurrency || 'Moeda', CURRENCIES ) );
 			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
 				button( t.createBtn || 'Criar plano', 'accent', { click: self.create }, { disabled: self.busy } )
 			] ) );
@@ -280,6 +364,36 @@
 				children.push( h( 'div', {
 					staticClass: 'jfb-mp-plans__notice is-' + ( self.noticeType || 'info' )
 				}, self.notice ) );
+			}
+
+			// ---- popup de documentação (premium) ------------------------------
+			if ( self.showHelp ) {
+				var docs = [
+					{ label: t.docSubs || 'Assinaturas — visão geral (docs MP)', url: 'https://www.mercadopago.com.br/developers/pt/docs/subscriptions/landing' },
+					{ label: t.docPlan || 'API: criar plano (preapproval_plan)', url: 'https://www.mercadopago.com.br/developers/pt/reference/subscriptions/_preapproval_plan/post' },
+					{ label: t.docPre || 'API: criar assinatura (preapproval)', url: 'https://www.mercadopago.com.br/developers/pt/reference/subscriptions/_preapproval/post' }
+				];
+
+				children.push( h( 'div', {
+					staticClass: 'jfb-mp-plans__modal-overlay',
+					on: { click: function ( e ) { if ( e.target === e.currentTarget ) { self.toggleHelp( false ); } } }
+				}, [
+					h( 'div', { staticClass: 'jfb-mp-plans__modal' }, [
+						h( 'button', {
+							attrs: { type: 'button', 'aria-label': 'Fechar' },
+							staticClass: 'jfb-mp-plans__modal-close',
+							on: { click: function () { self.toggleHelp( false ); } }
+						}, '×' ),
+						h( 'h2', { staticClass: 'jfb-mp-plans__page-title' }, t.helpTitle || 'Como funcionam os planos do Mercado Pago' ),
+						h( 'div', { staticClass: 'jfb-mp-plans__modal-body' },
+							( t.helpBody || [] ).map( function ( para ) { return h( 'p', para ); } )
+						),
+						h( 'h3', { staticClass: 'jfb-mp-plans__title' }, t.helpRefs || 'Referências oficiais (Mercado Pago)' ),
+						h( 'ul', { staticClass: 'jfb-mp-plans__modal-links' }, docs.map( function ( d ) {
+							return h( 'li', [ h( 'a', { attrs: { href: d.url, target: '_blank', rel: 'noopener noreferrer' } }, d.label ) ] );
+						} ) )
+					] )
+				] ) );
 			}
 
 			return h( 'section', { staticClass: 'jfb-mp-plans' }, children );
@@ -302,7 +416,7 @@
 			//     getRequestOnSave() (método que NÃO temos: a aba salva via REST própria).
 			// (O addon AC do core usa ()=>c/()=>s, mas são GETTERS do webpack — não funções.)
 			tabs.push( {
-				title: t.title || 'Mercado Pago Plans',
+				title: t.title || 'MercadoPago Settings',
 				component: component,
 				displayButton: false
 			} );

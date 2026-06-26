@@ -162,6 +162,48 @@ execute_event_for_subscription` (re-roda as ações do form fora da submissão).
 
 ---
 
+## 5.1 Análise: EDITAR planos vs assinaturas vigentes (decisão registrada)
+
+**Insight-chave (da nossa arquitetura):** as assinaturas usam `auto_recurring`
+**inline** — os termos do plano são **fotografados (snapshot)** no momento da criação
+(`Subscription_Logic::create_resource` lê o plano e embute os valores na preapproval).
+Logo, **uma assinatura vigente NÃO referencia o plano**; ela é independente.
+
+**Cenários hipotéticos se permitíssemos editar um plano:**
+1. *Editar o VALOR de um plano com assinaturas ativas* → as ativas mantêm o valor
+   fotografado (não mudam); só novas assinaturas pegam o novo valor. **Sem corrupção**,
+   mas gera **expectativa errada** (quem edita acha que muda as vigentes — não muda).
+2. *Editar FREQUÊNCIA* → idem; o `RecurringCyclesModel` das vigentes foi snapshot →
+   permanece. Consistente com o modelo, mas confunde.
+3. *Restrições do MP* → `PUT /preapproval_plan/{id}` só permite alterar **alguns**
+   campos (não dá pra trocar moeda, etc.). Edição "completa" nem é possível pela API.
+4. *Plano é o template do dropdown* → mudar o nome é inócuo; mudar valor surpreende o
+   dono do form, que montou esperando o valor antigo.
+
+**Decisão (agora):** **NÃO** implementar edição. Mantemos **criar + desativar
+(excluir)** + **datas de criação/exclusão** (feito) + **nomenclatura clara** (feito —
+"Excluído pelo dono", não o cru "cancelled"). Bate com o fallback do dono.
+
+**Se um dia adicionar edição:** restringir a **campos seguros** (nome/descrição),
+deixar EXPLÍCITO que só afeta **assinaturas futuras**, e preferir o padrão
+**"duplicar plano com novos termos + desativar o antigo"** em vez de editar in-place.
+
+---
+
+## 5.2 Melhorias da aba de planos entregues (v2.0.10)
+
+- **Moeda antes do valor** + **formato dinâmico por moeda** (símbolo/decimais/
+  separador; CLP sem centavos) com **preview ao vivo** do valor formatado.
+- **Label da aba** compacto: **"MercadoPago Settings"** (estilo "ActiveCampaign API").
+- **Títulos de seção** agora GRANDES (18px) — diferenciam "blocos" (antes pareciam label).
+- **Datas** de criação e de exclusão por plano + **nomenclatura** clara.
+- **Descrição premium** + **popup "Como funciona?"** com docs e **links oficiais do MP**.
+
+> ⚠️ A **formatação GLOBAL de moeda** (Payments/Subscriptions/recorder/sync) continua
+> pendente como **módulo à parte** — ver §6.3. Hoje só a ABA de planos formata por moeda.
+
+---
+
 ## 6. 🧹 PLANO DE AÇÃO pós-core (limpeza, organização, reforço, melhorias)
 
 > Fazer **depois** de fechar o item "b". Objetivo: sair de "funciona" para
@@ -189,6 +231,11 @@ execute_event_for_subscription` (re-roda as ações do form fora da submissão).
       o restante).
 
 ### 6.3 Robustez / dados
+- [ ] ⭐ **Estrutura GLOBAL de formatação de moeda** (prioridade do dono): um módulo
+      único que formata valores **por moeda** (símbolo/decimais/separador — `9,00` BRL
+      vs `9.00`) em **TODO lugar**: tabelas de *Payments* e *Subscriptions*, o
+      `SubscriptionPaymentRecorder`, o "Sync Plans" e qualquer exibição de valor. Hoje
+      só a ABA de planos formata (v2.0.10); o resto herda o `.` do core (PayPal/Stripe).
 - [ ] **Assinaturas órfãs** (APPROVAL_PENDING que falharam): mecanismo de limpeza
       (ação admin em massa ou cron) — não dá pra apagar no submit (capability).
 - [ ] **Idempotência ponta a ponta**: garantir que `payment` + `subscription_

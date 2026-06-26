@@ -27,15 +27,46 @@
 	margin: 0 0 4px;
 }
 
-/* título de seção = separador (mesmo border/typografia das linhas cx-vui) */
+/* título de seção = separador + cabeçalho de "novo bloco". GRANDE (igual ao
+   page-title) para diferenciar de label de campo — antes ficava do mesmo tamanho
+   de "Nome / descrição" e parecia pobre. */
 .jfb-mp-plans__title {
-	margin: 28px 0 14px;
-	padding: 22px 0 0;
+	margin: 34px 0 16px;
+	padding: 24px 0 0;
 	border-top: 1px solid #ececec;
-	font-size: 15px;
-	line-height: 20px;
+	font-size: 18px;
+	line-height: 24px;
 	font-weight: 600;
-	color: #23282d;
+	color: #1d2327;
+}
+
+/* link "Como funciona?" na intro */
+.jfb-mp-plans__help-link {
+	font-weight: 600;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+/* preview dinâmico do valor formatado conforme a moeda */
+.jfb-mp-plans__amount-preview {
+	margin: -6px 0 14px;
+	font-size: 13px;
+	color: #646970;
+}
+
+.jfb-mp-plans__amount-preview strong {
+	color: #1a7f37;
+}
+
+/* datas do plano (criado/excluído) */
+.jfb-mp-plans__row-dates {
+	margin: 2px 0 4px;
+	font-size: 12px;
+	color: #8c8f94;
+}
+
+.jfb-mp-plans__row.is-cancelled {
+	opacity: 0.72;
 }
 
 /* painel cinza nativo, com padding mais enxuto para uma lista */
@@ -123,4 +154,69 @@
 
 .jfb-mp-plans__notice.is-info {
 	color: #646970;
+}
+
+/* ---- popup de documentação (premium) ---------------------------------- */
+.jfb-mp-plans__modal-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 8vh 16px;
+	background: rgba(29, 35, 39, 0.55);
+	overflow-y: auto;
+}
+
+.jfb-mp-plans__modal {
+	position: relative;
+	width: 100%;
+	max-width: 620px;
+	background: #fff;
+	border-radius: 6px;
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+	padding: 28px 30px 30px;
+}
+
+.jfb-mp-plans__modal .jfb-mp-plans__page-title {
+	margin-top: 0;
+}
+
+.jfb-mp-plans__modal-close {
+	position: absolute;
+	top: 10px;
+	right: 12px;
+	border: 0;
+	background: none;
+	cursor: pointer;
+	font-size: 24px;
+	line-height: 1;
+	color: #646970;
+}
+
+.jfb-mp-plans__modal-close:hover {
+	color: #1d2327;
+}
+
+.jfb-mp-plans__modal-body p {
+	margin: 0 0 12px;
+	font-size: 14px;
+	line-height: 1.55;
+	color: #3c434a;
+}
+
+.jfb-mp-plans__modal-links {
+	margin: 4px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.jfb-mp-plans__modal-links li {
+	margin: 0 0 8px;
+}
+
+.jfb-mp-plans__modal-links a {
+	font-weight: 600;
+	text-decoration: none;
 }
