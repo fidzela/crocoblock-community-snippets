@@ -29,17 +29,10 @@
 namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Authorized_Payment;
-use Jet_FB_Mercadopago_Gateway\FormEvents\RenewalPaymentEvent;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
-use Jet_FB_Paypal\DbModels\SubscriptionToPaymentModel;
-use Jet_FB_Paypal\QueryViews\PaymentsBySubscription;
-use Jet_FB_Paypal\QueryViews\PaymentsWithSales;
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_FB_Paypal\Utils\SubscriptionUtils;
 use Jet_Form_Builder\Actions\Events\Gateway_Failed\Gateway_Failed_Event;
-use Jet_Form_Builder\Actions\Events\Gateway_Success\Gateway_Success_Event;
-use Jet_Form_Builder\Gateways\Base_Gateway;
-use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Query_Views\Payment_With_Record_View;
 use WP_REST_Response;
 
@@ -111,29 +104,16 @@ class AuthorizedPaymentNotification {
 			return self::ok( 'payment not approved (' . ( '' !== $pay_status ? $pay_status : $ap_status ) . ')' );
 		}
 
-		$is_renewal = $this->has_prior_payment( (int) $row['id'] );
-		$type       = $is_renewal ? PaymentsWithSales::RENEW_TYPE : Base_Gateway::PAYMENT_TYPE_INITIAL;
-
+		// PONTO ÚNICO: ativa a assinatura + grava o Payment_Model (initial/renew) +
+		// vincula o pagador + dispara o evento. Mesmo recorder do tópico `payment`,
+		// então os dois caminhos são idênticos e idempotentes (transaction_id).
 		try {
-			$payment_row_id = ( new Payment_Model() )->insert(
-				array(
-					'transaction_id' => $transaction_id,
-					'form_id'        => $row['form_id'],
-					'user_id'        => $row['user_id'],
-					'gateway_id'     => 'mercadopago',
-					'scenario'       => $row['scenario'],
-					'amount_value'   => (float) ( $ap['transaction_amount'] ?? 0 ),
-					'amount_code'    => (string) ( $ap['currency_id'] ?? 'BRL' ),
-					'type'           => $type,
-					'status'         => 'COMPLETED',
-				)
-			);
-
-			( new SubscriptionToPaymentModel() )->insert(
-				array(
-					'subscription_id' => $row['id'],
-					'payment_id'      => $payment_row_id,
-				)
+			$result = ( new SubscriptionPaymentRecorder() )->record(
+				$row,
+				$transaction_id,
+				(float) ( $ap['transaction_amount'] ?? 0 ),
+				(string) ( $ap['currency_id'] ?? 'BRL' ),
+				is_array( $payment['payer'] ?? null ) ? $payment['payer'] : array()
 			);
 		} catch ( \Throwable $e ) {
 			WebhookConfig::log(
@@ -145,10 +125,7 @@ class AuthorizedPaymentNotification {
 			return new WP_REST_Response( array( 'message' => 'persist failed (retry)' ), 500 );
 		}
 
-		$event = $is_renewal ? RenewalPaymentEvent::class : Gateway_Success_Event::class;
-		SubscriptionUtils::execute_event_for_subscription( $row['id'], $event );
-
-		return self::ok( 'completed (' . $type . ')' );
+		return self::ok( 'subscription ' . $result );
 	}
 
 	/**
@@ -169,24 +146,6 @@ class AuthorizedPaymentNotification {
 			)->query()->query_one();
 
 			return ! empty( $row );
-		} catch ( \Throwable $e ) {
-			return false;
-		}
-	}
-
-	/**
-	 * A assinatura já tem alguma cobrança? (decide initial vs renew).
-	 *
-	 * @param int $subscription_id
-	 *
-	 * @return bool
-	 */
-	private function has_prior_payment( int $subscription_id ): bool {
-		try {
-			$query = PaymentsBySubscription::find( array( 'subscription_id' => $subscription_id ) )->query();
-			$rows  = $query->db()->get_results( $query->sql(), ARRAY_A );
-
-			return ! empty( $rows );
 		} catch ( \Throwable $e ) {
 			return false;
 		}
