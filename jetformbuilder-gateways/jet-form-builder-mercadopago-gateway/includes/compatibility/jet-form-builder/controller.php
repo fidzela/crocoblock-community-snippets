@@ -1,26 +1,15 @@
 <?php
 /**
- * ============================================================================
- *  Controller  —  Gateway do Mercado Pago (registrado no JetFormBuilder)
- * ============================================================================
+ * Controller — gateway do Mercado Pago (registrado no JetFormBuilder).
  *
- *  DESTINO (cole por cima):
- *    includes/compatibility/jet-form-builder/controller.php
+ * Notas vivas:
+ *  - $token_query_name = 'preference_id': o MP anexa preference_id na back_url; o core
+ *    acha a linha por transaction_id == preference_id (pay-now).
+ *  - get_price() não multiplica por 100 (BRL é decimal real).
+ *  - get_current_token() devolve o Access Token (campo 'secret').
+ *  - $plan_field/$plan_var + set_/get_ relacionados servem ao cenário Subscription.
  *
- *  MUDANÇAS vs. a versão renomeada do Stripe:
- *   1) $token_query_name = 'preference_id'  (era 'session_id').
- *      O Mercado Pago anexa preference_id na back_url; o core usa esse valor
- *      para achar a linha (transaction_id == preference_id).
- *   2) get_price()  : NÃO multiplica por 100 (BRL é decimal real).
- *   3) get_current_token() : devolve o Access Token (campo 'secret').
- *
- *  MANTIDO INERTE (não remover — subscription fica pronto p/ o futuro):
- *   - $plan_field / $plan_var / set_plan_field() / set_plan_from_field() /
- *     get_plan_var(): só o cenário Subscription usa. Como o cenário está
- *     desligado por padrão (JFB_MP_SUBSCRIPTIONS_ENABLED), esses métodos não
- *     são chamados, mas permanecem para o arquivo carregar sem fatal.
- *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder;

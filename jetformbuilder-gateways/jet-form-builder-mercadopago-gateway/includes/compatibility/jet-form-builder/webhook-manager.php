@@ -1,29 +1,11 @@
 <?php
 /**
- * ============================================================================
- *  Webhook_Manager  —  NEUTRALIZADO (erradicação do Stripe)
- * ============================================================================
+ * Webhook_Manager — no-op. O Mercado Pago não cria webhook por API: a notificação
+ * vai pelo `notification_url` enviado no recurso (preference/preapproval) + o endpoint
+ * REST que recebe e valida x-signature (MercadopagoWebHookGlobal + SignatureValidator).
+ * Mantemos maybe_create_webhook() como no-op para não quebrar chamadas legadas.
  *
- *  POR QUE ESTE ARQUIVO FOI ESVAZIADO:
- *  ---------------------------------------------------------------------------
- *  A versão original (herdada do addon Stripe) criava/listava o webhook por API
- *  em `https://api.stripe.com/v1/webhook_endpoints`. Isso NÃO se aplica ao
- *  Mercado Pago: o MP **não cria webhook por API** do mesmo modo. No MP a
- *  notificação é configurada por dois caminhos — AMBOS já implementados no
- *  plugin e independentes desta classe:
- *
- *    (a) `notification_url` enviado no CORPO da preference/preapproval
- *        (ver Create_Checkout_Session::build_preference); e
- *    (b) o endpoint REST que RECEBE a notificação e valida o header
- *        `x-signature` (HMAC) — MercadopagoWebHookGlobal + SignatureValidator.
- *
- *  Por isso TODA a lógica `api.stripe.com` (criar/listar/buscar webhook por API)
- *  foi REMOVIDA daqui — era inerte e só mantinha "Stripe em caminho ativo".
- *  Mantemos o método público `maybe_create_webhook()` como **no-op** para não
- *  quebrar chamadas legadas; a reescrita MP-native das assinaturas não depende
- *  mais dele. Arquivo preservado apenas como ponto de extensão/histórico.
- *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder;
