@@ -18,6 +18,8 @@
  *    authorized (vindo de pendente)  -> ATIVA (o 1º Gateway_Success_Event sai no
  *                                       `subscription_authorized_payment`, igual
  *                                       ao invoice.paid do Stripe) -> sem evento
+ *    authorized (estado TERMINAL)    -> IGNORADO (§5.2: SubscriptionStatusGuard não
+ *                                       reativa CANCELLED/EXPIRED/REFUNDED)
  *    paused                          -> SUSPENDED   -> SubscriptionSuspendedEvent
  *    cancelled                       -> CANCELLED   -> SubscriptionCancelEvent
  *
@@ -122,6 +124,17 @@ class PreapprovalNotification {
 
 		switch ( $mp_status ) {
 			case 'authorized':
+				// GUARD §5.2: não ressuscitar assinatura TERMINAL (CANCELLED/EXPIRED/
+				// REFUNDED) a partir de um `authorized` tardio/reentregue. A reativação
+				// legítima SUSPENDED->authorized continua valendo (SUSPENDED não é terminal).
+				if ( SubscriptionStatusGuard::is_terminal( $current ) ) {
+					WebhookConfig::log(
+						'Preapproval `authorized` para assinatura TERMINAL — ignorado (nao reativa).',
+						array( 'subscription_id' => $row['id'] ?? 0, 'status' => $current )
+					);
+					break;
+				}
+
 				$was_suspended = ( SubscribeNow::SUSPENDED === $current );
 
 				$resource->set_active();

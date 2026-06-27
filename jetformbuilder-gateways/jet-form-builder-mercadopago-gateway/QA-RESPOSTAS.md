@@ -11,6 +11,20 @@
 > unique/lock → janela de duplicar (§7.1/§8.1); cobrança aprovada reativa assinatura
 > CANCELADA (§5.2/§11.3); refund direto no MP não reflete no status da assinatura (§12.4).
 
+> ## ✅ P0 RESOLVIDO — v2.0.18
+> As três arestas P0 (dinheiro) foram fechadas:
+> 1. **Double-submit (§3.2):** `Subscription_Logic::after_actions()` agora tem trava
+>    por fingerprint da submissão (lock `GET_LOCK` + transient de 90s) → o 2º envio
+>    idêntico reaproveita o `init_point` em vez de criar uma 2ª preapproval real.
+> 2. **Dedup da cobrança (§4.2/§7.1/§8.1/§8.3):** confirmado que os dois tópicos usam o
+>    id do pagamento real como `transaction_id` (converge); o check-then-insert do
+>    `SubscriptionPaymentRecorder::record()` agora é serializado por lock nomeado por
+>    `transaction_id` (novo helper `Locks`, com degradação segura sem `GET_LOCK`).
+> 3. **Assinatura terminal (§5.2/§11.3):** novo `SubscriptionStatusGuard::is_terminal()`
+>    (CANCELLED/EXPIRED/REFUNDED). Recorder e `PreapprovalNotification` NÃO reativam
+>    assinatura terminal; o pagamento tardio é **registrado** (verdade financeira) mas
+>    **sem reativar e sem evento** — logado para reconciliação manual.
+
 ---
 
 ## §1 Arquitetura & legado
@@ -108,10 +122,10 @@
 
 ## 🎯 PLANO DE CONSOLIDAÇÃO sugerido (P0 → P2)
 
-**P0 — onde o dinheiro circula (fechar primeiro):**
-- **Dedup atômica da cobrança de assinatura** (§4.2/§7.1/§8.1/§8.3): adotar **UNIQUE `transaction_id`** ou **lock nomeado** no recorder; e **confirmar no MP** que `authorized_payment.payment.id` == `payment.data.id`.
-- **Não reativar/registrar em assinatura terminal** (§5.2/§11.3): guard de status terminal no `maybe_activate`/`PreapprovalNotification`.
-- **Trava de double-submit** da assinatura (§3.2): impedir 2 preapprovals reais.
+**P0 — onde o dinheiro circula** → ✅ **TODOS FEITOS (v2.0.18)**:
+- ✅ **Dedup atômica da cobrança de assinatura** (§4.2/§7.1/§8.1/§8.3): **lock nomeado** por `transaction_id` no recorder (helper `Locks`, degradação segura); convergência confirmada (ambos os tópicos usam o id do pagamento real). *(UNIQUE no `transaction_id` do core fica como hardening opcional futuro — é schema do CORE.)*
+- ✅ **Não reativar assinatura terminal** (§5.2/§11.3): `SubscriptionStatusGuard::is_terminal()` no `record()` (recorder) e no caso `authorized` do `PreapprovalNotification`. Decisão tomada: pagamento tardio em assinatura terminal é **registrado** (verdade financeira), **sem reativar e sem evento**.
+- ✅ **Trava de double-submit** (§3.2): fingerprint da submissão + lock + transient de 90s reaproveitando o `init_point`.
 
 **P1 — consistência & operação:**
 - `record()` transacional (§8.2); refund webhook→status da assinatura (§12.4/§12.5); índice/UNIQUE em `billing_id` (§10.2); reconciliador/sweeper de órfãs e perdidos (§3.3/§7.4); alerta de `amount mismatch` (§11.2); trilho de auditoria mínimo (§14.1); multi-conta (§9.8) — decidir.

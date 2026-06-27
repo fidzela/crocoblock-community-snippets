@@ -18,7 +18,14 @@
  *  assinatura ativa e registra a cobrança independentemente do tópico usado.
  *
  *  IDEMPOTÊNCIA: por transaction_id (= id do pagamento no MP). Reentregas do MP
- *  e a chegada pelos dois tópicos para a MESMA cobrança não duplicam.
+ *  e a chegada pelos dois tópicos para a MESMA cobrança não duplicam. Como o
+ *  transaction_id do core NÃO é UNIQUE (§10.3), o check-then-insert é serializado
+ *  por um LOCK nomeado (Locks::acquire, por transaction_id) para fechar a corrida
+ *  entre entregas simultâneas (§7.1/§8.1).
+ *
+ *  ASSINATURA TERMINAL (§5.2/§11.3): cobrança aprovada que chega para uma
+ *  assinatura já encerrada (CANCELLED/EXPIRED/REFUNDED) registra o pagamento
+ *  (dinheiro real), mas NÃO reativa a assinatura e NÃO dispara o evento do form.
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
@@ -26,6 +33,7 @@
 namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
 use Jet_FB_Mercadopago_Gateway\FormEvents\RenewalPaymentEvent;
+use Jet_FB_Mercadopago_Gateway\Locks;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_FB_Paypal\DbModels\SubscriptionToPaymentModel;
 use Jet_FB_Paypal\DbModels\SubscriptionToPayerShipping;
@@ -64,56 +72,99 @@ class SubscriptionPaymentRecorder {
 			return 'no transaction id';
 		}
 
-		// A cobrança aprovada já prova que a assinatura está ativa — garante ACTIVE
-		// mesmo que o tópico `subscription_preapproval` (status) não tenha chegado.
-		$this->maybe_activate( $subscription );
+		// GUARD de estado TERMINAL (§5.2/§11.3): uma cobrança aprovada que chega
+		// DEPOIS de a assinatura ter sido encerrada (CANCELLED/EXPIRED/REFUNDED) —
+		// reentrega tardia/fora de ordem, ou o MP cobrando uma preapproval cancelada
+		// só localmente (§12.5) — NÃO pode RESSUSCITAR a assinatura nem re-disparar
+		// as ações do form. Mas o dinheiro é REAL: registramos o Payment_Model assim
+		// mesmo (verdade financeira + visibilidade para o dono reconciliar/estornar
+		// no MP), apenas SEM ativar e SEM evento.
+		$is_terminal = SubscriptionStatusGuard::is_terminal( (string) ( $subscription['status'] ?? '' ) );
 
-		// Idempotência: esta cobrança já virou Payment_Model? (reentrega / 2 tópicos)
-		if ( $this->already_processed( $transaction_id ) ) {
-			return 'already processed';
+		// Lock por transaction_id: serializa entregas concorrentes da MESMA cobrança
+		// e fecha a janela check-then-insert (already_processed -> insert) que, sem
+		// UNIQUE no transaction_id do core (§10.3), duplicaria o pagamento. Se o host
+		// não suportar GET_LOCK, acquire() devolve null e seguimos sem lock (degradação
+		// segura: continua valendo o already_processed).
+		$lock_name = 'pay-' . $transaction_id;
+		$has_lock  = ( true === Locks::acquire( $lock_name, 10 ) );
+
+		try {
+			// A cobrança aprovada prova que a assinatura está ativa (só fora de estado
+			// terminal — ver guard acima).
+			if ( ! $is_terminal ) {
+				$this->maybe_activate( $subscription );
+			}
+
+			// Idempotência: esta cobrança já virou Payment_Model? (reentrega / 2 tópicos)
+			if ( $this->already_processed( $transaction_id ) ) {
+				return 'already processed';
+			}
+
+			$is_renewal = $this->has_prior_payment( (int) $subscription['id'] );
+			$type       = $is_renewal ? PaymentsWithSales::RENEW_TYPE : Base_Gateway::PAYMENT_TYPE_INITIAL;
+
+			$payment_row_id = ( new Payment_Model() )->insert(
+				array(
+					'transaction_id' => $transaction_id,
+					'form_id'        => $subscription['form_id'],
+					'user_id'        => $subscription['user_id'],
+					'gateway_id'     => 'mercadopago',
+					'scenario'       => $subscription['scenario'],
+					'amount_value'   => $amount,
+					'amount_code'    => '' !== $currency ? $currency : 'BRL',
+					'type'           => $type,
+					'status'         => 'COMPLETED',
+				)
+			);
+
+			( new SubscriptionToPaymentModel() )->insert(
+				array(
+					'subscription_id' => $subscription['id'],
+					'payment_id'      => $payment_row_id,
+				)
+			);
+
+			// Vincula o PAGADOR à assinatura na 1ª cobrança (como o Stripe faz no
+			// checkout.session.completed) -> tira o "Subscriber: Not attached". Como o
+			// `already_processed` acima garante 1x por transaction_id, e initial só
+			// ocorre uma vez, não duplica em renovações/reentregas.
+			if ( ! $is_renewal ) {
+				$this->attach_payer( $subscription, $payer );
+			}
+
+			// Vincula ESTA cobrança ao pagador (coluna "Payer" da tabela Payments + o
+			// e-mail no popup de refund de Payment Details). O Stripe faz igual no
+			// InvoicePaid: pega o payer_shipping da assinatura e liga ao payment.
+			$this->link_payment_to_payer( (int) $subscription['id'], $payment_row_id );
+
+			// Estado TERMINAL: o pagamento JÁ foi registrado acima (verdade financeira),
+			// mas NÃO disparamos o evento do form — a assinatura está encerrada; rodar
+			// Gateway_Success/Renewal aqui re-executaria ações (e-mails etc.) de uma
+			// assinatura morta. Fica logado para o dono reconciliar (provável estorno
+			// no MP, já que a cobrança não deveria ter ocorrido). Ver §11.3.
+			if ( $is_terminal ) {
+				WebhookConfig::log(
+					'Cobranca aprovada para assinatura TERMINAL: pagamento registrado, SEM reativar e SEM evento.',
+					array(
+						'subscription_id' => $subscription['id'] ?? 0,
+						'status'          => $subscription['status'] ?? '',
+						'transaction_id'  => $transaction_id,
+					)
+				);
+
+				return 'terminal: recorded, no event';
+			}
+
+			$event = $is_renewal ? RenewalPaymentEvent::class : Gateway_Success_Event::class;
+			SubscriptionUtils::execute_event_for_subscription( $subscription['id'], $event );
+
+			return 'completed (' . $type . ')';
+		} finally {
+			if ( $has_lock ) {
+				Locks::release( $lock_name );
+			}
 		}
-
-		$is_renewal = $this->has_prior_payment( (int) $subscription['id'] );
-		$type       = $is_renewal ? PaymentsWithSales::RENEW_TYPE : Base_Gateway::PAYMENT_TYPE_INITIAL;
-
-		$payment_row_id = ( new Payment_Model() )->insert(
-			array(
-				'transaction_id' => $transaction_id,
-				'form_id'        => $subscription['form_id'],
-				'user_id'        => $subscription['user_id'],
-				'gateway_id'     => 'mercadopago',
-				'scenario'       => $subscription['scenario'],
-				'amount_value'   => $amount,
-				'amount_code'    => '' !== $currency ? $currency : 'BRL',
-				'type'           => $type,
-				'status'         => 'COMPLETED',
-			)
-		);
-
-		( new SubscriptionToPaymentModel() )->insert(
-			array(
-				'subscription_id' => $subscription['id'],
-				'payment_id'      => $payment_row_id,
-			)
-		);
-
-		// Vincula o PAGADOR à assinatura na 1ª cobrança (como o Stripe faz no
-		// checkout.session.completed) -> tira o "Subscriber: Not attached". Como o
-		// `already_processed` acima garante 1x por transaction_id, e initial só
-		// ocorre uma vez, não duplica em renovações/reentregas.
-		if ( ! $is_renewal ) {
-			$this->attach_payer( $subscription, $payer );
-		}
-
-		// Vincula ESTA cobrança ao pagador (coluna "Payer" da tabela Payments + o
-		// e-mail no popup de refund de Payment Details). O Stripe faz igual no
-		// InvoicePaid: pega o payer_shipping da assinatura e liga ao payment.
-		$this->link_payment_to_payer( (int) $subscription['id'], $payment_row_id );
-
-		$event = $is_renewal ? RenewalPaymentEvent::class : Gateway_Success_Event::class;
-		SubscriptionUtils::execute_event_for_subscription( $subscription['id'], $event );
-
-		return 'completed (' . $type . ')';
 	}
 
 	/**

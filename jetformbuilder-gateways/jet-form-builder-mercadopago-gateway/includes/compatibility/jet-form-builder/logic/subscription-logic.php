@@ -14,6 +14,9 @@
  *
  *  FLUXO (espelha o Stripe):
  *    after_actions()
+ *      0. trava de double-submit (§3.2): fingerprint da submissão + lock nomeado +
+ *                                transient curto -> 2º envio idêntico reaproveita o
+ *                                init_point em vez de criar uma 2ª preapproval real
  *      1. create_subscription()  grava SubscriptionModel (APPROVAL_PENDING) +
  *                                RecurringCyclesModel (lendo os termos do plano)
  *      2. create_resource()      POST /preapproval (auto_recurring inline)
@@ -42,6 +45,8 @@ namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Logic;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Preapproval;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Preapproval_Plan;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Subscription_Connector;
+use Jet_FB_Mercadopago_Gateway\Locks;
+use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Exceptions\Query_Builder_Exception;
@@ -104,33 +109,88 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	 * @throws Gateway_Exception
 	 */
 	public function after_actions() {
-		$this->subscription_id = $this->create_subscription();
+		// TRAVA DE DOUBLE-SUBMIT (§3.2): dois envios da MESMA submissão (duplo clique,
+		// reenvio por rede) criariam DUAS preapprovals REAIS no MP — a idempotência do
+		// MP não as funde, pois cada linha local gera um external_reference distinto.
+		// Serializamos por uma "assinatura" (fingerprint) da submissão (form + usuário
+		// + dados) e, numa janela curta, reaproveitamos o redirect da 1ª criação em vez
+		// de criar a 2ª. Se o host não suportar GET_LOCK seguimos sem lock (degradação
+		// segura: o transient ainda barra o duplo-clique sequencial).
+		$fingerprint = $this->submission_fingerprint();
+		$lock_name   = 'subnew-' . $fingerprint;
+		$claim_key   = 'jfbmp_sub_claim_' . $fingerprint;
 
-		// Obs.: se o MP recusar, a linha local fica como APPROVAL_PENDING. NÃO
-		// apagamos aqui porque o submit roda no contexto do VISITANTE (sem
-		// manage_options) e Base_Db_Model::before_delete() exige essa capability
-		// -> daria "Not enough capabilities ... delete rows". Limpeza dessas
-		// pendentes é pela tela admin de Subscriptions (lá há permissão).
-		$preapproval = $this->create_resource();
+		$has_lock = ( true === Locks::acquire( $lock_name, 10 ) );
 
-		$this->save_resource( $preapproval );
+		try {
+			$claimed = get_transient( $claim_key );
 
-		$this->add_context(
-			array(
-				'session_id' => $this->subscription_id,
-			)
-		);
+			// Double-submit detectado: NÃO cria 2ª preapproval — reusa a 1ª.
+			if ( is_array( $claimed ) && ! empty( $claimed['redirect'] ) ) {
+				WebhookConfig::log(
+					'Double-submit de assinatura — reaproveitando a preapproval anterior.',
+					array( 'subscription_id' => $claimed['subscription_id'] ?? 0 )
+				);
 
-		jet_fb_action_handler()->add_response(
-			array( 'redirect' => $this->resolve_redirect_url( $preapproval ) )
-		);
+				$this->subscription_id = (int) ( $claimed['subscription_id'] ?? 0 );
 
-		Save_Record::add_hidden();
+				$this->add_context( array( 'session_id' => $this->subscription_id ) );
 
-		add_action(
-			'jet-form-builder/form-handler/after-send',
-			array( $this, 'attach_record_id' )
-		);
+				jet_fb_action_handler()->add_response(
+					array( 'redirect' => (string) $claimed['redirect'] )
+				);
+
+				Save_Record::add_hidden();
+
+				return;
+			}
+
+			$this->subscription_id = $this->create_subscription();
+
+			// Obs.: se o MP recusar, a linha local fica como APPROVAL_PENDING. NÃO
+			// apagamos aqui porque o submit roda no contexto do VISITANTE (sem
+			// manage_options) e Base_Db_Model::before_delete() exige essa capability
+			// -> daria "Not enough capabilities ... delete rows". Limpeza dessas
+			// pendentes é pela tela admin de Subscriptions (lá há permissão).
+			$preapproval = $this->create_resource();
+
+			$this->save_resource( $preapproval );
+
+			$redirect = $this->resolve_redirect_url( $preapproval );
+
+			// Janela curta (90s): cobre o duplo-clique/reenvio ACIDENTAL (acontece em
+			// segundos) sem travar uma nova assinatura DELIBERADA do mesmo plano minutos
+			// depois. O valor guardado permite reusar o MESMO init_point no 2º envio.
+			set_transient(
+				$claim_key,
+				array(
+					'subscription_id' => $this->subscription_id,
+					'redirect'        => $redirect,
+				),
+				90
+			);
+
+			$this->add_context(
+				array(
+					'session_id' => $this->subscription_id,
+				)
+			);
+
+			jet_fb_action_handler()->add_response(
+				array( 'redirect' => $redirect )
+			);
+
+			Save_Record::add_hidden();
+
+			add_action(
+				'jet-form-builder/form-handler/after-send',
+				array( $this, 'attach_record_id' )
+			);
+		} finally {
+			if ( $has_lock ) {
+				Locks::release( $lock_name );
+			}
+		}
 	}
 
 	/**
@@ -431,6 +491,39 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 	 */
 	protected function generate_external_reference(): string {
 		return 'jfbmp-sub-' . $this->subscription_id;
+	}
+
+	/**
+	 * "Assinatura" (hash) da submissão atual, base da trava de double-submit (§3.2):
+	 * mesma combinação de form + usuário + dados enviados => mesma submissão. Campos
+	 * voláteis/de controle são descartados para não falsear o hash. Roda ANTES de
+	 * create_subscription(), então NÃO depende do subscription_id.
+	 *
+	 * @return string
+	 */
+	protected function submission_fingerprint(): string {
+		$request = jet_fb_action_handler()->request_data;
+		$request = is_array( $request ) ? $request : array();
+
+		// Remove chaves voláteis/de controle que não definem "a mesma submissão"
+		// (mantê-las faria dois cliques idênticos gerarem hashes diferentes).
+		unset(
+			$request['_wpnonce'],
+			$request['__refer'],
+			$request['__is_ajax'],
+			$request['__form_id'],
+			$request['action']
+		);
+
+		ksort( $request );
+
+		$parts = array(
+			(int) jet_fb_handler()->form_id,
+			(int) get_current_user_id(),
+			(string) wp_json_encode( $request ),
+		);
+
+		return md5( implode( '|', $parts ) );
 	}
 
 	/**
