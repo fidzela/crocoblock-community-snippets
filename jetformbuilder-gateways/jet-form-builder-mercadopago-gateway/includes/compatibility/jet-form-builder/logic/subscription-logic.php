@@ -250,15 +250,17 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 		$preapproval = $request->send_request();
 
 		if ( isset( $preapproval['error'] ) ) {
-			// Diagnóstico inline (aparece no form record): mostra QUAL e-mail de
-			// pagador e QUAL prefixo de token foram de fato usados. O erro do MP
-			// "payer and collector must be real or test" é exatamente um
-			// descasamento entre esses dois (payer x dono do token).
-			$hint = sprintf(
-				' [payer_email: %s | token: %s]',
-				'' !== $payer_email ? $payer_email : '(vazio)',
-				'' !== $secret ? substr( $secret, 0, 8 ) . '…' : '(vazio)'
-			);
+			// Diagnóstico do payer/token SÓ com WP_DEBUG (não vaza no Form Record em
+			// produção). Ajuda a depurar "payer and collector must be real or test".
+			$hint = '';
+
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				$hint = sprintf(
+					' [payer_email: %s | token: %s]',
+					'' !== $payer_email ? $payer_email : '(vazio)',
+					'' !== $secret ? substr( $secret, 0, 8 ) . '…' : '(vazio)'
+				);
+			}
 
 			throw new Gateway_Exception( $preapproval['error']['message'] . $hint, $preapproval );
 		}
