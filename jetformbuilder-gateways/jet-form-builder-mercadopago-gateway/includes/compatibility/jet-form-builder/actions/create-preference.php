@@ -1,25 +1,16 @@
 <?php
 /**
- * ============================================================================
- *  Create_Preference  —  Cria uma PREFERENCE do Mercado Pago (Checkout Pro)
- * ============================================================================
+ * Create_Preference — cria uma Preference do Mercado Pago (Checkout Pro), usada
+ * pelo cenário pay-now. POST /checkout/preferences → { id, init_point,
+ * sandbox_init_point, ... }; o pay-now-logic escolhe init_point (produção) ou
+ * sandbox_init_point (token TEST-).
  *
- *  Usada pelo cenário pay-now. Monta o corpo da Preference e faz
- *  POST /checkout/preferences. A resposta traz { id, init_point,
- *  sandbox_init_point, ... }; o pay-now-logic decide o redirect entre
- *  init_point (produção) e sandbox_init_point (modo teste, token TEST-).
+ * Corpo: items (unit_price em BRL decimal, SEM *100); back_urls + auto_return;
+ * binary_mode:true (recusa 'pending'); external_reference (reconciliação do webhook);
+ * payment_methods.excluded_payment_types. O valor chega já correto via set_price()
+ * (Base_Mercadopago::get_price() não multiplica).
  *
- *  Detalhes do corpo:
- *    - items: title / quantity / unit_price (BRL decimal, SEM *100) / currency_id;
- *    - back_urls.success/failure/pending + auto_return:'approved';
- *    - binary_mode:true (fase 1: só cartão; recusa 'pending');
- *    - external_reference (anti-replay / reconciliação do webhook);
- *    - payment_methods.excluded_payment_types (exclui Pix/boleto/ATM na fase 1).
- *
- *  VALOR MONETÁRIO: BRL é decimal real (ex.: 24.90). O valor chega via
- *  set_price() já correto (Base_Mercadopago::get_price() NÃO multiplica).
- *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions;

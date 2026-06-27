@@ -1,24 +1,15 @@
 <?php
 /**
- * ============================================================================
- *  Fetch_Mercadopago_Plans  —  Lista os planos (preapproval_plan) p/ o editor
- * ============================================================================
+ * Fetch_Mercadopago_Plans — lista os planos (preapproval_plan) para o editor.
  *
- *  Alimenta o dropdown "Subscription Plan" do cenário de assinatura. O botão
- *  "Refresh Plans From Mercadopago" (assets/js/mercadopago.js) faz POST aqui com
- *  { public, secret, force_refresh }.
+ * Alimenta o dropdown "Subscription Plan" do cenário de assinatura (botão "Refresh
+ * Plans From Mercadopago"). Em falha devolve WP_Error com mensagem (token vazio ·
+ * HTTP {code} do MP · conexão), que o JS mostra em vermelho. Em sucesso:
+ * { success, data:[ {id,key,value,label,disabled,...} ] }.
  *
- *  POR QUE FOI REESCRITO (corrige "Request failed" opaco):
- *  ---------------------------------------------------------------------------
- *  A versão anterior LANÇAVA exceção (token vazio / erro de conexão) e ENGOLIA o
- *  status HTTP do MP (se o MP respondia 401/400, devolvia lista vazia sem avisar).
- *  O JS então só mostrava "Request failed", sem causa. Agora:
- *   - nunca dá fatal;
- *   - em falha, devolve um WP_Error com MENSAGEM (o JS mostra em vermelho):
- *       token vazio · HTTP {code} do MP · falha de conexão;
- *   - em sucesso, devolve { success, data:[ {id,key,value,label,disabled} ] }.
+ * Default = só planos ATIVOS (editor); a aba de gestão manda include_cancelled=true.
  *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;

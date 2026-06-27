@@ -261,8 +261,15 @@ continuam** (o admin usa só os estáticos `dynamic_rest_url`/`get_messages`), m
 - [ ] ⭐ **Estrutura GLOBAL de formatação de moeda** (prioridade do dono): um módulo
       único que formata valores **por moeda** (símbolo/decimais/separador — `9,00` BRL
       vs `9.00`) em **TODO lugar**: tabelas de *Payments* e *Subscriptions*, o
-      `SubscriptionPaymentRecorder`, o "Sync Plans" e qualquer exibição de valor. Hoje
-      só a ABA de planos formata (v2.0.10); o resto herda o `.` do core (PayPal/Stripe).
+      `SubscriptionPaymentRecorder`, o "Sync Plans" e qualquer exibição de valor.
+      **STATUS (v2.0.14):** classe `includes/Money.php` criada + aplicada em
+      `GrossColumn`/`BillingCycleColumn` (condicional a `gateway_id==='mercadopago'`),
+      MAS no teste do dono **NÃO aplicou** (segue "10.00"). **A INVESTIGAR** (deixado
+      de lado a pedido do dono): provavelmente (a) o **Loader** está carregando OUTRA
+      cópia da lib Shared (não a nossa) → nossas colunas não rodam; ou (b) o
+      `gateway_id` no `$record` da tabela não vem como `mercadopago`; ou (c) cache.
+      Regra de ouro já documentada em `Money.php`: formatar só EXIBIÇÃO, nunca dado.
+      Pendente também: "Amount" cru do single Payment + export CSV/PDF.
 - [ ] **Assinaturas órfãs** (APPROVAL_PENDING que falharam): mecanismo de limpeza
       (ação admin em massa ou cron) — não dá pra apagar no submit (capability).
 - [ ] **Idempotência ponta a ponta**: garantir que `payment` + `subscription_
