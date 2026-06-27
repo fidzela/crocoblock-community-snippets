@@ -17,10 +17,19 @@
  *    hash_hmac( 'sha256', manifest, ASSINATURA_SECRETA )  ->  compara com v1
  *    usando hash_equals (comparação timing-safe).
  *
- *  O segredo é a "Assinatura secreta" do painel de Webhooks — NÃO o Access
- *  Token. SEGURO POR PADRÃO (fail-closed): sem segredo configurado, is_valid()
- *  RECUSA (401), porque não há como provar a origem da notificação. Existe um
- *  filtro de override (allow-unsigned), mas é desencorajado.
+ *  O segredo é a "Assinatura secreta" do painel de Webhooks — NÃO o Access Token.
+ *
+ *  COMPORTAMENTO PADRÃO = FAIL-OPEN (afrouxado de propósito — ver SEGURANCA-REVERSAO.md):
+ *  SEM segredo configurado, is_valid() RETORNA true e o webhook É PROCESSADO (com um
+ *  aviso no log). Por que é aceitável: cada handler RE-VERIFICA o evento com um GET
+ *  autenticado na API do MP (o CORPO do webhook nunca é a fonte de verdade) e a
+ *  gravação é idempotente — um webhook forjado só consegue disparar uma CONSULTA de um
+ *  recurso da PRÓPRIA conta, jamais injetar estado. Recusar aqui travaria TODO o ciclo
+ *  de assinatura até o segredo ser configurado.
+ *
+ *  PARA ENFORÇAR (hardening, recomendado em produção): defina
+ *    define( 'JFB_MP_WEBHOOK_SECRET', '<Assinatura secreta do painel de Webhooks>' );
+ *  Com o segredo presente, assinatura ausente/ inválida -> RECUSA (false -> 401).
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */

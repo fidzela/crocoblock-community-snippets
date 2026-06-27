@@ -104,26 +104,45 @@ class SubscriptionPaymentRecorder {
 			$is_renewal = $this->has_prior_payment( (int) $subscription['id'] );
 			$type       = $is_renewal ? PaymentsWithSales::RENEW_TYPE : Base_Gateway::PAYMENT_TYPE_INITIAL;
 
-			$payment_row_id = ( new Payment_Model() )->insert(
-				array(
-					'transaction_id' => $transaction_id,
-					'form_id'        => $subscription['form_id'],
-					'user_id'        => $subscription['user_id'],
-					'gateway_id'     => 'mercadopago',
-					'scenario'       => $subscription['scenario'],
-					'amount_value'   => $amount,
-					'amount_code'    => '' !== $currency ? $currency : 'BRL',
-					'type'           => $type,
-					'status'         => 'COMPLETED',
-				)
-			);
+			// ATOMICIDADE (§8.2): o Payment_Model e o vínculo com a assinatura
+			// (SubscriptionToPaymentModel) precisam entrar JUNTOS — uma falha entre os
+			// dois deixaria um pagamento ÓRFÃO (registrado, mas sem vínculo). Só esses
+			// dois writes financeiros vão na transação; o enriquecimento do pagador
+			// (attach_payer/link_payment_to_payer) segue best-effort FORA dela (cada um
+			// já tem seu try/catch) — falha de enriquecimento NÃO pode desfazer a
+			// cobrança. Sem aninhar: a transação do attach_payer roda APÓS este commit.
+			Execution_Builder::instance()->transaction_start();
 
-			( new SubscriptionToPaymentModel() )->insert(
-				array(
-					'subscription_id' => $subscription['id'],
-					'payment_id'      => $payment_row_id,
-				)
-			);
+			try {
+				$payment_row_id = ( new Payment_Model() )->insert(
+					array(
+						'transaction_id' => $transaction_id,
+						'form_id'        => $subscription['form_id'],
+						'user_id'        => $subscription['user_id'],
+						'gateway_id'     => 'mercadopago',
+						'scenario'       => $subscription['scenario'],
+						'amount_value'   => $amount,
+						'amount_code'    => '' !== $currency ? $currency : 'BRL',
+						'type'           => $type,
+						'status'         => 'COMPLETED',
+					)
+				);
+
+				( new SubscriptionToPaymentModel() )->insert(
+					array(
+						'subscription_id' => $subscription['id'],
+						'payment_id'      => $payment_row_id,
+					)
+				);
+
+				Execution_Builder::instance()->transaction_commit();
+			} catch ( \Throwable $e ) {
+				Execution_Builder::instance()->transaction_rollback();
+
+				// Re-lança: o caller (PaymentNotification/AuthorizedPaymentNotification)
+				// captura e devolve 500 -> o MP reentrega. O lock é liberado no finally.
+				throw $e;
+			}
 
 			// Vincula o PAGADOR à assinatura na 1ª cobrança (como o Stripe faz no
 			// checkout.session.completed) -> tira o "Subscriber: Not attached". Como o
@@ -144,12 +163,13 @@ class SubscriptionPaymentRecorder {
 			// assinatura morta. Fica logado para o dono reconciliar (provável estorno
 			// no MP, já que a cobrança não deveria ter ocorrido). Ver §11.3.
 			if ( $is_terminal ) {
-				WebhookConfig::log(
-					'Cobranca aprovada para assinatura TERMINAL: pagamento registrado, SEM reativar e SEM evento.',
+				WebhookConfig::audit(
+					'terminal_charge',
 					array(
 						'subscription_id' => $subscription['id'] ?? 0,
 						'status'          => $subscription['status'] ?? '',
 						'transaction_id'  => $transaction_id,
+						'note'            => 'pagamento registrado, SEM reativar e SEM evento',
 					)
 				);
 

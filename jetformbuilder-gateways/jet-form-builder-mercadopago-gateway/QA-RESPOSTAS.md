@@ -128,8 +128,9 @@
 - ✅ **Trava de double-submit** (§3.2): fingerprint da submissão + lock + transient de 90s reaproveitando o `init_point`.
 
 **P1 — consistência & operação:**
-- `record()` transacional (§8.2); refund webhook→status da assinatura (§12.4/§12.5); índice/UNIQUE em `billing_id` (§10.2); reconciliador/sweeper de órfãs e perdidos (§3.3/§7.4); alerta de `amount mismatch` (§11.2); trilho de auditoria mínimo (§14.1); multi-conta (§9.8) — decidir.
-- Segurança: janela de `ts` (replay, §9.2/§9.3); **decisão fail-open** (§9.4); alinhar docblock (§9.5, rápido).
+- ✅ **FEITO (v2.0.19):** `record()` transacional (§8.2 — Payment + SubscriptionToPayment atômicos; enriquecimento do pagador segue best-effort fora); alerta de `amount mismatch` **sempre-ligado** (§11.2, `WebhookConfig::audit()`); trilho de auditoria mínimo **sempre-ligado** (§14.1 — uma linha por webhook no Dispatcher: topic/data_id/status/result, filtrável); docblock fail-open alinhado (§9.5).
+- ⏳ **Pendente — decisão do dono:** refund webhook→status da assinatura (§12.4/§12.5 — **fork:** o estorno de uma cobrança deve **cancelar a preapproval no MP** ou só marcar o pagamento? Marcar a assinatura REFUNDED sem cancelar no MP criaria a inconsistência §12.5); multi-conta (§9.8 — assumir 1 conta MP por site?); fail-open vs enforce (§9.4).
+- ⏳ **Pendente — adiado com justificativa:** índice em `billing_id` (§10.2 — é schema da lib Shared + exige migração; ganho baixo numa tabela pequena); janela de `ts`/replay (§9.2/§9.3 — não confirmado se o MP regenera o `ts` por retry; janela rígida poderia descartar retries legítimos; replay já mitigado por GET+idempotência); reconciliador/sweeper de órfãs e perdidos (§3.3/§7.4 — feature maior, merece tarefa dedicada).
 
 **P2 — limpeza & cosmético:**
 - Remover `checkout-session.php` morto + docblocks legados (§1.1); moeda no single Payment/export (§15.5); `Payment_Meta` (§15.7); fallback de moeda real (§11.4); normalizar versões nas docs (§14.2).

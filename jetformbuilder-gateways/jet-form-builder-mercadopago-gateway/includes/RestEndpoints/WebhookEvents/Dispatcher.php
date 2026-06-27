@@ -28,6 +28,36 @@ class Dispatcher {
 	public function dispatch( string $event_type, string $data_id = '', array $payload = array() ): WP_REST_Response {
 		WebhookConfig::log( 'Webhook dispatch', array( 'type' => $event_type, 'data_id' => $data_id ) );
 
+		$response = $this->route( $event_type, $data_id, $payload );
+
+		// Trilha de auditoria MÍNIMA e SEMPRE-LIGADA (§14.1): topic + data_id + status
+		// + resultado, sem dado sensível. Dá rastro de suporte em produção (onde o
+		// WP_DEBUG fica desligado). Filtrável/silenciável — ver WebhookConfig::audit().
+		$data = $response->get_data();
+
+		WebhookConfig::audit(
+			'webhook',
+			array(
+				'topic'   => $event_type,
+				'data_id' => $data_id,
+				'status'  => $response->get_status(),
+				'result'  => is_array( $data ) ? (string) ( $data['message'] ?? '' ) : '',
+			)
+		);
+
+		return $response;
+	}
+
+	/**
+	 * Roteamento puro por tópico (sem efeitos colaterais de log/auditoria).
+	 *
+	 * @param string $event_type
+	 * @param string $data_id
+	 * @param array  $payload
+	 *
+	 * @return WP_REST_Response
+	 */
+	private function route( string $event_type, string $data_id, array $payload ): WP_REST_Response {
 		switch ( $event_type ) {
 
 			case 'payment':

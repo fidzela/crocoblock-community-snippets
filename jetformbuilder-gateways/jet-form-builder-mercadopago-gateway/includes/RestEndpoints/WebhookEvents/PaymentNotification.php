@@ -145,10 +145,13 @@ class PaymentNotification {
 			return self::ok( 'status ' . ( '' !== $status ? $status : 'unknown' ) );
 		}
 
-		// Anti-fraude: o valor do MP precisa bater com o que gravamos.
+		// Anti-fraude: o valor do MP precisa bater com o que gravamos. Divergência ->
+		// NÃO confirma (linha fica CREATED) e AUDITA sempre (§11.2): é um alerta que o
+		// dono precisa enxergar em produção (não só com WP_DEBUG), pois a cobrança fica
+		// pendente em silêncio até reconciliação manual.
 		if ( ! $this->amount_matches( $payment, $row ) ) {
-			WebhookConfig::log(
-				'Amount mismatch; refusing to confirm.',
+			WebhookConfig::audit(
+				'amount_mismatch',
 				array(
 					'data_id'  => $data_id,
 					'valor_mp' => $payment['transaction_amount'] ?? null,

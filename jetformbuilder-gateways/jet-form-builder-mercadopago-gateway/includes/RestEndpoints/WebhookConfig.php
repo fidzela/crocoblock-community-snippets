@@ -141,4 +141,37 @@ class WebhookConfig {
 
 		error_log( $line ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 	}
+
+	/**
+	 * Trilha de AUDITORIA mínima — SEMPRE registra (independe de WP_DEBUG), ao
+	 * contrário de log() (que é só de depuração). Existe para dar rastro de suporte
+	 * em PRODUÇÃO: topic, data_id, resultado, valores e ids — itens NÃO sensíveis.
+	 *
+	 * REGRA: NUNCA passe segredo aqui (Access Token, Assinatura secreta, dados de
+	 * cartão). É a trilha do que aconteceu, não um dump de credenciais.
+	 *
+	 * Pode ser silenciada (sites de altíssimo volume) com:
+	 *   add_filter( 'jet-form-builder/mercadopago/webhook-audit', '__return_false' );
+	 * ou redirecionada para um logger próprio engatando no mesmo filtro.
+	 *
+	 * @param string $event   Rótulo curto do evento (ex.: 'webhook', 'amount_mismatch').
+	 * @param array  $context Dados NÃO sensíveis (topic/data_id/result/valores/ids).
+	 *
+	 * @return void
+	 */
+	public static function audit( string $event, array $context = array() ) {
+		$enabled = apply_filters( 'jet-form-builder/mercadopago/webhook-audit', true );
+
+		if ( ! $enabled ) {
+			return;
+		}
+
+		$line = '[JFB MercadoPago Audit] ' . $event;
+
+		if ( ! empty( $context ) ) {
+			$line .= ' ' . wp_json_encode( $context );
+		}
+
+		error_log( $line ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+	}
 }
