@@ -46,6 +46,7 @@
 
 namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
+use Jet_FB_Mercadopago_Gateway\Recovery\Pending_Effects;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_Form_Builder\Actions\Events\Gateway_Success\Gateway_Success_Event;
 use Jet_Form_Builder\Gateways\Gateway_Manager;
@@ -131,7 +132,8 @@ class PaymentFulfillment {
 			Tools::update_record( $record_id );
 		} catch ( \Throwable $e ) {
 			// O pagamento JÁ está COMPLETED; uma ação que falhe não pode 500 o
-			// webhook (evita retentativas inúteis do MP). Logamos e seguimos.
+			// webhook (evita retentativas inúteis do MP). Logamos, MARCAMOS os efeitos
+			// como pendentes (identificável + reexecutável) e seguimos.
 			WebhookConfig::log(
 				'Fulfillment: success event execution failed.',
 				array(
@@ -140,6 +142,8 @@ class PaymentFulfillment {
 					'error'      => $e->getMessage(),
 				)
 			);
+
+			Pending_Effects::mark( $payment_id, 'fulfillment_failed' );
 		}
 	}
 

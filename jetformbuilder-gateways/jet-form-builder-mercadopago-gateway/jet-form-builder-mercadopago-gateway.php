@@ -17,7 +17,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die();
 }
 
-define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.22' );
+define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.23' );
 
 define( 'JET_FB_MERCADOPAGO_GATEWAY__FILE__', __FILE__ );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_PLUGIN_BASE', plugin_basename( __FILE__ ) );

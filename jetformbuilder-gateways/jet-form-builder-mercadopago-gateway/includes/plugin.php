@@ -11,6 +11,7 @@ use Jet_FB_Mercadopago_Gateway\Proxy\RestApiController;
 use Jet_FB_Mercadopago_Gateway\FormEvents\EventsManager;
 use Jet_FB_Mercadopago_Gateway\Admin\Plans_Page;
 use Jet_FB_Mercadopago_Gateway\Recovery\Reconciler;
+use Jet_FB_Mercadopago_Gateway\Recovery\Pending_Effects;
 
 // If this file is called directly, abort.
 if ( ! defined( 'WPINC' ) ) {
@@ -74,6 +75,10 @@ class Plugin {
 		// Rede de segurança: reconcilia com o MP os registros que o webhook perdeu
 		// (plugin fora do ar além da janela de retry do MP, rollback, etc.). WP-Cron.
 		Reconciler::register();
+
+		// Flag de "efeitos pendentes": expõe a reexecução manual das ações do form
+		// (hook jet-form-builder/mercadopago/rerun-effects) quando um evento falhou.
+		Pending_Effects::register();
 	}
 
 	/**

@@ -34,6 +34,7 @@ namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
 use Jet_FB_Mercadopago_Gateway\FormEvents\RenewalPaymentEvent;
 use Jet_FB_Mercadopago_Gateway\Locks;
+use Jet_FB_Mercadopago_Gateway\Recovery\Pending_Effects;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_FB_Paypal\DbModels\SubscriptionToPaymentModel;
 use Jet_FB_Paypal\DbModels\SubscriptionToPayerShipping;
@@ -177,7 +178,20 @@ class SubscriptionPaymentRecorder {
 			}
 
 			$event = $is_renewal ? RenewalPaymentEvent::class : Gateway_Success_Event::class;
-			SubscriptionUtils::execute_event_for_subscription( $subscription['id'], $event );
+
+			try {
+				SubscriptionUtils::execute_event_for_subscription( $subscription['id'], $event );
+			} catch ( \Throwable $e ) {
+				// O pagamento JÁ está registrado; se as AÇÕES do form falharem, NÃO
+				// derrubamos o webhook (o retry só cairia no already_processed e o evento
+				// nunca re-rodaria). Marcamos "efeitos pendentes" -> identificável e
+				// reexecutável (Pending_Effects). Ver §"evento falhou".
+				Pending_Effects::mark( (int) $payment_row_id, 'subscription_event_failed' );
+				WebhookConfig::log(
+					'Subscription success event failed.',
+					array( 'payment_id' => $payment_row_id, 'subscription_id' => $subscription['id'], 'error' => $e->getMessage() )
+				);
+			}
 
 			return 'completed (' . $type . ')';
 		} finally {

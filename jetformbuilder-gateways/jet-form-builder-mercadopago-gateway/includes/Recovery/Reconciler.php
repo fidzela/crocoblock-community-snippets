@@ -105,9 +105,18 @@ class Reconciler {
 		$subs = self::reconcile_pending_subscriptions();
 		$pays = self::reconcile_created_paynow();
 
+		// Não auto-reexecutamos efeitos pendentes (ações do form podem não ser
+		// idempotentes — ver Pending_Effects), mas surfamos a contagem para o dono
+		// saber que há pagamentos aguardando reexecução manual.
+		$pending = count( Pending_Effects::find_pending( 100 ) );
+
 		WebhookConfig::audit(
 			'reconciler_run',
-			array( 'subscriptions_checked' => $subs, 'paynow_checked' => $pays )
+			array(
+				'subscriptions_checked' => $subs,
+				'paynow_checked'        => $pays,
+				'effects_pending'       => $pending,
+			)
 		);
 	}
 
