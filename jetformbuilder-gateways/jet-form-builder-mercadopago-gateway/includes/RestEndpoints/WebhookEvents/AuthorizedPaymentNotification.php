@@ -87,22 +87,10 @@ class AuthorizedPaymentNotification {
 		$pay_status = (string) ( $payment['status'] ?? '' );
 		$ap_status  = (string) ( $ap['status'] ?? '' );
 
-		// CORRELAÇÃO CORRETA (docs MP, confirmado): a fatura (authorized_payment) e o
-		// pagamento são recursos DIFERENTES -> authorized_payment.id != payment.id. O
-		// vínculo é `authorized_payment.payment_id == payment.id`. O transaction_id
-		// DEVE ser o id do PAGAMENTO REAL — é o que converge com o tópico `payment`
-		// para a dedup. JAMAIS usar ap.id/data.id (= id da FATURA): a MESMA cobrança
-		// entraria 2x (uma por tópico) com ids diferentes.
-		$transaction_id = (string) ( $payment['id'] ?? ( $ap['payment_id'] ?? '' ) );
+		// Id da cobrança real (preferido) com fallback no id do authorized_payment.
+		$transaction_id = (string) ( $payment['id'] ?? ( $ap['id'] ?? $data_id ) );
 
-		// Sem id do pagamento real, não há chave de dedup confiável: não registramos
-		// (fatura ainda sem payment gerado — scheduled/recycling). O tópico `payment`
-		// (ou a próxima reentrega/recorrência) trará o pagamento.
-		if ( '' === $transaction_id ) {
-			return self::ok( 'no real payment id yet' );
-		}
-
-		// Idempotência: já registramos esta cobrança? (converge com o tópico `payment`)
+		// Idempotência: já registramos esta cobrança?
 		if ( $this->already_processed( $transaction_id ) ) {
 			return self::ok( 'already processed' );
 		}
