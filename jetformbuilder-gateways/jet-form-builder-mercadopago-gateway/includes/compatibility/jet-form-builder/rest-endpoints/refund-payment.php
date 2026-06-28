@@ -98,8 +98,12 @@ class Refund_Payment extends Rest_Api_Endpoint_Base {
 		}
 
 		// Estorno parcial opcional (validado <= valor pago). Default: total.
-		$in     = $request->get_json_params() ?: array();
-		$amount = $this->resolve_amount( $in, $payment );
+		// ASSINATURA: o MP só permite estorno TOTAL da cobrança (a UI bloqueia o
+		// valor — confirmado pelo dono). Forçamos full refund server-side, ignorando
+		// qualquer 'amount' parcial recebido. Pay-now continua aceitando parcial.
+		$in              = $request->get_json_params() ?: array();
+		$is_subscription = '' !== (string) ( $payment['subscription']['billing_id'] ?? '' );
+		$amount          = $is_subscription ? null : $this->resolve_amount( $in, $payment );
 
 		$action = ( new Refund_Payment_Action() )
 			->set_bearer_auth( $token )

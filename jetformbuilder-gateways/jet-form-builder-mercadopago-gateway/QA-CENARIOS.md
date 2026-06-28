@@ -79,17 +79,17 @@
 
 ## §D — Mercado Pago (API, webhooks) — 🔎 confirmar em doc/sandbox
 
-- **D1.** `authorized_payment.payment.id` == `payment.id` do tópico `payment`?
-  **R:** Nosso código JÁ usa o **id do pagamento real** nos dois caminhos (`payment['id']` e `ap['payment']['id']`) como `transaction_id`, então a dedup converge **se** os ids forem o mesmo recurso — que é o esperado no modelo do MP (o authorized_payment referencia o payment gerado). 🔎 **confirmar em sandbox** (é a suposição de maior alavancagem da idempotência de assinatura).
+- **D1.** Correlação `authorized_payment` ↔ `payment`.
+  **R (✅ CONFIRMADO MP):** São recursos DIFERENTES — `authorized_payment.id != payment.id`. O vínculo correto é **`authorized_payment.payment_id == payment.id`**. 🐞→✅ **Tínhamos um bug:** o `AuthorizedPaymentNotification` caía em `ap.id` (id da FATURA) como fallback do transaction_id → gravaria a MESMA cobrança 2× (uma por tópico) se `subscription_authorized_payment` estivesse ativo. **CORRIGIDO (v2.0.26):** `transaction_id = payment.id ?? ap.payment_id` (NUNCA `ap.id`) → converge com o tópico `payment`. *(Bônus: faturas sem payment ainda gerado — scheduled/recycling — não disparam mais um Gateway_Failed_Event falso.)*
 
-- **D2.** O MP regenera o `ts` da `x-signature` por retry?
-  **R:** Desconhecido sem teste. **Por isso adiamos a janela de replay** — uma janela rígida descartaria retries legítimos se o `ts` for reusado. 🔎 confirmar; se regenera, uma janela de ±5min fecha o replay com segurança.
+- **D2.** Janela de `ts`/replay.
+  **R (✅ CONFIRMADO MP):** A doc NÃO especifica se o `ts` é regenerado por retry. Recomendação do MP: (1) o controle PRINCIPAL é o **HMAC (v1)**; (2) se usar janela temporal, tratar como **tolerância de clock/atraso** (margem folgada), NÃO como dedup; (3) para replay, **persistir `x-request-id` por um TTL** e rejeitar só replays EXATOS. **Prático:** nossa idempotência (already_processed+lock+CAS) já neutraliza replay; o store de `x-request-id` é defesa-em-profundidade **opcional (P2)**. A janela rígida de `ts` foi corretamente DESCARTADA. ✅
 
-- **D3.** Teto total de retry do MP.
-  **R (doc):** 15min→30min→6h→48h→96h→96h… por **vários dias**; a doc não fixa um teto explícito. **Prático:** o reconciliador cobre o que esgotar essa janela. 🔎 confirmar o número final de tentativas.
+- **D3.** Teto de retry do MP.
+  **R (✅ CONFIRMADO MP):** Sem teto fixo documentado. Após não-200 em 22s, retenta a cada 15min; após a 3ª tentativa o prazo prorroga, mas os envios continuam. **Valida nosso desenho:** receptor idempotente + reconciliador que busca o recurso por API nas lacunas é EXATAMENTE o caminho recomendado pelo MP. ✅
 
 - **D4.** Cobrança de assinatura: `payment` E/OU `subscription_authorized_payment`?
-  **R:** No painel do dono chegou só `payment` (confirmado em teste). O recorder é **ponto único** para os dois, idempotente por `transaction_id`. 🔎 confirmar em quais configs cada um chega e se os ids podem divergir (liga em D1).
+  **R (✅ CONFIRMADO MP):** Pode chegar pelos DOIS, conforme o que estiver habilitado. Os ids divergem (ver D1) → amarrar por `payment_id`. **Por isso a correção D1 importa:** com os dois tópicos ligados, sem ela a cobrança entraria 2×. Agora o recorder converge por `transaction_id` = id do pagamento real. ✅ (corrigido)
 
 - **D5.** Idempotency-Key do MP em `/preapproval` fecharia o double-submit na fonte?
   **R:** Hoje a idempotência do MP é por `external_reference` (distinto por linha local), então não funde dois submits. **Se** `/preapproval` aceitar `X-Idempotency-Key`, uma chave derivada do fingerprint fundiria — mas criaria 2 linhas locais com o MESMO billing_id (mexe em §10.2). 🔎 avaliar; a trava local já resolve.
@@ -206,7 +206,7 @@
   **R:** Status por linha (CREATED/APPROVAL_PENDING vs COMPLETED) distingue. **🐞 Pay-now CREATED abandonado acumula** (nada limpa). O reconciliador ignora os > 7 dias, mas não os apaga. 🔧 um sweeper de CREATED/APPROVAL_PENDING antigos (admin, com capability) limparia o relatório.
 
 - **J3.** Refund parcial encerra a assinatura?
-  **R (decisão atual):** "estorno encerra" trata QUALQUER refund de cobrança de assinatura como encerramento (cancela no MP + CANCELLED). **Para um PARCIAL isso pode ser agressivo.** ⚖️ refinar: parcial NÃO encerra; só total encerra. Decisão do dono.
+  **R (✅ CONFIRMADO dono/MP):** Refund de cobrança de assinatura é SEMPRE TOTAL — o MP bloqueia nome/valor e devolve o que foi pago. Logo NÃO existe "parcial" para assinatura → "estorno encerra" está correto, sem o risco de parcial-agressivo. **Reforçado server-side (v2.0.26):** o endpoint força full refund quando o pagamento é de assinatura (ignora qualquer `amount` parcial recebido). Pay-now segue aceitando parcial. ✅ resolvido.
 
 - **J4.** Cliente pagou mas não recebeu o acesso (efeito pendente).
   **R:** A flag `Pending_Effects` identifica; a reexecução é manual (hook). **Prático:** falta um caminho UX para o dono ver e clicar "reprocessar". 🔧 liga em F3 (coluna no admin + botão).
@@ -236,12 +236,13 @@
 - 🐞 backfill de renovações perdidas só pega a mais recente — §H1.
 - 🐞 pay-now CREATED abandonado acumula (sem sweeper) — §J2.
 - 🐞 fingerprint fura com campo aleatório — §B4.
-- ⚖️ refund parcial encerra a assinatura (agressivo) — §J3.
-- 🔎 **suposições do MP não confirmadas em sandbox** (D1/D2/D4 são as de maior alavancagem).
+- ✅ refund de assinatura é sempre TOTAL → "estorno encerra" correto + reforçado server-side — §J3 (resolvido).
+- 🐞→✅ correlação MP por `payment_id` (bug D1 que duplicaria a cobrança) **corrigido na v2.0.26**.
+- 🔎 resta o teste end-to-end do tópico `subscription_authorized_payment` em sandbox (+ endpoint `authorized_payments` vs `authorized/payments`).
 
 ## 🎯 Próximos passos sugeridos (priorizado)
 
-**P0 — confirmar suposições do MP (sandbox):** D1 (id convergente), D4 (qual tópico chega), D2 (`ts` por retry). São a base da idempotência e da segurança; baratas de validar, alto impacto.
+**P0 — ✅ MP CONFIRMADO (D1–D4) + bug D1 corrigido (v2.0.26):** correlação por `payment_id` (D1); os dois tópicos podem chegar (D4); HMAC é o controle principal e replay opcional via `x-request-id` (D2); sem teto de retry → reconciliador é o caminho certo (D3). **Resta só:** teste end-to-end em sandbox habilitando `subscription_authorized_payment` + confirmar o endpoint (`authorized_payments` vs `authorized/payments`).
 
 **P1 — fechar arestas de produto:**
 - Refund parcial NÃO encerra (só total) — §J3 (decisão + 1 ajuste).
