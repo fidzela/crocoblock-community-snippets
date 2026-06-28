@@ -10,6 +10,7 @@ use Jet_FB_Mercadopago_Gateway\Proxy\AdminSinglePages;
 use Jet_FB_Mercadopago_Gateway\Proxy\RestApiController;
 use Jet_FB_Mercadopago_Gateway\FormEvents\EventsManager;
 use Jet_FB_Mercadopago_Gateway\Admin\Plans_Page;
+use Jet_FB_Mercadopago_Gateway\Recovery\Reconciler;
 
 // If this file is called directly, abort.
 if ( ! defined( 'WPINC' ) ) {
@@ -69,6 +70,10 @@ class Plugin {
 		AdminSinglePages::register();
 		RestApiController::register();
 		EventsManager::register();
+
+		// Rede de segurança: reconcilia com o MP os registros que o webhook perdeu
+		// (plugin fora do ar além da janela de retry do MP, rollback, etc.). WP-Cron.
+		Reconciler::register();
 	}
 
 	/**

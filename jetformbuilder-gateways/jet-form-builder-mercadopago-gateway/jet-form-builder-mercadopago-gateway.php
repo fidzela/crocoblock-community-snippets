@@ -17,7 +17,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die();
 }
 
-define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.20' );
+define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.21' );
 
 define( 'JET_FB_MERCADOPAGO_GATEWAY__FILE__', __FILE__ );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_PLUGIN_BASE', plugin_basename( __FILE__ ) );
@@ -30,6 +30,13 @@ define( 'JET_FB_MERCADOPAGO_GATEWAY_URL', plugins_url( '/', __FILE__ ) );
 if ( ! defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) ) {
 	define( 'JFB_MP_SUBSCRIPTIONS_ENABLED', true );
 }
+
+// Ao DESATIVAR o plugin, limpa o agendamento WP-Cron do reconciliador. Feito aqui,
+// SEM depender do autoloader, para funcionar mesmo num estado degradado. O nome do
+// hook espelha Recovery\Reconciler::HOOK ('jfbmp_reconcile').
+register_deactivation_hook( __FILE__, function () {
+	wp_clear_scheduled_hook( 'jfbmp_reconcile' );
+} );
 
 // Guarda defensiva no autoloader. Se o vendor/autoload.php estiver ausente/ilegível
 // — o que acontece MOMENTANEAMENTE durante uma ATUALIZAÇÃO do plugin (a pasta é
