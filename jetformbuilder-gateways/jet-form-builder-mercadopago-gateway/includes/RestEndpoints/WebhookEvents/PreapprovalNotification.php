@@ -34,6 +34,7 @@ use Jet_FB_Mercadopago_Gateway\FormEvents\SubscriptionCancelEvent;
 use Jet_FB_Mercadopago_Gateway\FormEvents\SubscriptionReactivateEvent;
 use Jet_FB_Mercadopago_Gateway\FormEvents\SubscriptionSuspendedEvent;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
+use Jet_FB_Paypal\DbModels\RecurringCyclesModel;
 use Jet_FB_Paypal\Logic\SubscribeNow;
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_FB_Paypal\Resources\Subscription;
@@ -106,7 +107,79 @@ class PreapprovalNotification {
 			return self::ok( 'apply failed' );
 		}
 
+		// Re-sincroniza os TERMOS locais (valor/frequência/moeda) se mudaram no MP —
+		// o RecurringCyclesModel local exibia os termos da CRIAÇÃO. Best-effort.
+		$this->sync_terms( $row, $pre );
+
 		return self::ok( 'status ' . ( '' !== $mp_status ? $mp_status : 'unknown' ) );
+	}
+
+	/**
+	 * Re-sincroniza o ciclo recorrente LOCAL (RecurringCyclesModel, linha REGULAR)
+	 * com o auto_recurring atual da preapproval. O ciclo local é só EXIBIÇÃO (admin);
+	 * a cobrança real é sempre o que o MP aplica. Mantemos o local fiel quando o
+	 * plano/termos mudam no MP. Idempotente: só escreve se algo mudou.
+	 *
+	 * @param array $row Assinatura local preparada (SubscriptionsView, com 'cycle').
+	 * @param array $pre Preapproval do MP (GET /preapproval), com auto_recurring.
+	 *
+	 * @return void
+	 */
+	private function sync_terms( array $row, array $pre ) {
+		$auto = $pre['auto_recurring'] ?? array();
+
+		if ( empty( $auto ) || ! isset( $auto['transaction_amount'] ) ) {
+			return;
+		}
+
+		$sub_id = (int) ( $row['id'] ?? 0 );
+
+		if ( ! $sub_id ) {
+			return;
+		}
+
+		$mp = array(
+			'interval_unit'  => (string) ( $auto['frequency_type'] ?? 'months' ),
+			'interval_count' => (int) ( $auto['frequency'] ?? 1 ),
+			'currency'       => (string) ( $auto['currency_id'] ?? 'BRL' ),
+			'amount'         => number_format( (float) $auto['transaction_amount'], 2, '.', '' ),
+		);
+
+		$local = is_array( $row['cycle'] ?? null ) ? $row['cycle'] : array();
+
+		// Já idêntico? Nada a fazer (evita escrita e UPDATE de 0 linhas).
+		if ( ! empty( $local['amount'] )
+			&& (string) ( $local['interval_unit'] ?? '' ) === $mp['interval_unit']
+			&& (int) ( $local['interval_count'] ?? 0 ) === $mp['interval_count']
+			&& (string) ( $local['currency'] ?? '' ) === $mp['currency']
+			&& number_format( (float) ( $local['amount'] ?? 0 ), 2, '.', '' ) === $mp['amount']
+		) {
+			return;
+		}
+
+		try {
+			if ( empty( $local['amount'] ) ) {
+				// Não havia ciclo local (criação best-effort falhou) -> cria a linha REGULAR.
+				( new RecurringCyclesModel() )->insert(
+					array_merge(
+						array( 'subscription_id' => $sub_id, 'quantity' => 1, 'tenure_type' => 'REGULAR' ),
+						$mp
+					)
+				);
+			} else {
+				( new RecurringCyclesModel() )->update(
+					$mp,
+					array( 'subscription_id' => $sub_id, 'tenure_type' => 'REGULAR' )
+				);
+			}
+
+			WebhookConfig::audit(
+				'subscription_terms_resynced',
+				array( 'subscription_id' => $sub_id, 'amount' => $mp['amount'], 'currency' => $mp['currency'] )
+			);
+		} catch ( \Throwable $e ) {
+			WebhookConfig::log( 'Re-sync dos termos falhou.', array( 'subscription_id' => $sub_id, 'error' => $e->getMessage() ) );
+		}
 	}
 
 	/**
