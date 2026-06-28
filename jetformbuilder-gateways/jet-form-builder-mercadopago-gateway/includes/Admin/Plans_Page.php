@@ -63,13 +63,15 @@ class Plans_Page {
 	 * @return array
 	 */
 	private static function forms_list(): array {
+		// Mais RECENTES primeiro (FASE 2F): o dono normalmente configura o form que
+		// acabou de criar. Ordena por data de criação DESC.
 		$posts = get_posts(
 			array(
 				'post_type'   => 'jet-form-builder',
 				'post_status' => array( 'publish', 'draft' ),
 				'numberposts' => 200,
-				'orderby'     => 'title',
-				'order'       => 'ASC',
+				'orderby'     => 'date',
+				'order'       => 'DESC',
 			)
 		);
 
@@ -213,6 +215,11 @@ class Plans_Page {
 					'pmPickForm'    => __( 'Escolha um formulário primeiro.', 'jet-form-builder-mercadopago-gateway' ),
 					'pmKeepOne'     => __( 'Mantenha pelo menos um meio de pagamento ativo.', 'jet-form-builder-mercadopago-gateway' ),
 					'pmEmpty'       => __( 'Nenhum meio de pagamento retornado pela conta. Sincronize novamente.', 'jet-form-builder-mercadopago-gateway' ),
+					/* translators: %d: numero de meios de pagamento */
+					'pmSyncedMsg'   => __( 'Há %d meios de pagamento disponíveis e sincronizados com o Mercado Pago.', 'jet-form-builder-mercadopago-gateway' ),
+					'pmChooseFirst' => __( 'Escolha um formulário acima para configurar e sincronizar os meios de pagamento.', 'jet-form-builder-mercadopago-gateway' ),
+					'pmDefaultNote' => __( 'Este formulário ainda não tem meios definidos: por padrão, aceita apenas cartões de crédito (e o saldo Mercado Pago, que não pode ser desativado). Sincronize e salve para personalizar.', 'jet-form-builder-mercadopago-gateway' ),
+					'pmAlwaysOn'    => __( 'Sempre disponível — o Mercado Pago não permite desativar o saldo em conta no Checkout Pro.', 'jet-form-builder-mercadopago-gateway' ),
 				),
 			)
 		);

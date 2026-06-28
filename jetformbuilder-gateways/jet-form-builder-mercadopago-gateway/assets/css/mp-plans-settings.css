@@ -84,6 +84,21 @@
 	font-size: 13px;
 }
 
+/* separador + respiro apos o seletor de Formulario na secao de meios (E3) */
+.jfb-mp-plans__pm-sep {
+	margin: 18px 0 22px;
+	border-top: 1px solid #ececec;
+}
+
+/* instrucao quando nenhum formulario foi escolhido (sync bloqueado) */
+.jfb-mp-plans__hint {
+	padding: 10px 12px;
+	color: #646970;
+	font-size: 13px;
+	background: #f6f7f7;
+	border-radius: 4px;
+}
+
 /* cada plano = card branco sobre o painel cinza */
 .jfb-mp-plans__row {
 	display: flex;

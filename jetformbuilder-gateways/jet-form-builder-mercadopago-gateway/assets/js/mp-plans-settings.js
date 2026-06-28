@@ -24,6 +24,11 @@
 	var CFG = window.JFB_MP_PLANS || { urls: {}, i18n: {}, hasToken: false };
 	var t = CFG.i18n || {};
 
+	// Tipos que o MP NAO deixa excluir do Checkout Pro -> sempre ATIVOS (espelha
+	// Payment_Methods_Config::NEVER_EXCLUDE no servidor). O switcher fica travado on.
+	var NEVER_EXCLUDE = [ 'account_money' ];
+	function alwaysOn( id ) { return NEVER_EXCLUDE.indexOf( id ) !== -1; }
+
 	// Moedas aceitas pelo Mercado Pago (uma por país onde o MP opera). Evita digitar
 	// errado / deixar em branco. Em assinatura (preapproval_plan) a moeda precisa ser
 	// a do país da conta — por isso um select fechado em vez de texto livre.
@@ -214,10 +219,17 @@
 			},
 
 			// --- meios de pagamento (Pay Now) -----------------------------------
-			// SYNC: busca os meios ATUAIS da conta no MP (dinamico -- reflete mudancas).
+			// Ha config salva (option isolada) para o formulario escolhido?
+			pmHasConfig: function () {
+				return !! ( CFG.formExclusions && this.pmFormId &&
+					Object.prototype.hasOwnProperty.call( CFG.formExclusions, this.pmFormId ) );
+			},
+			// SYNC: busca os meios ATUAIS da conta no MP (dinamico). Exige um
+			// formulario escolhido primeiro -- a config e POR formulario.
 			syncPm: function () {
 				var self = this;
 				if ( ! CFG.hasToken ) { self.setNotice( t.noToken, 'error' ); return; }
+				if ( ! self.pmFormId ) { self.setNotice( t.pmPickForm || 'Escolha um formulario primeiro.', 'error' ); return; }
 				self.pmLoading = true;
 				self.setNotice( '' );
 				api( CFG.urls.pmList, { force_refresh: true } )
@@ -225,41 +237,61 @@
 						self.pmTypes = ( res && res.data ) || [];
 						self.pmSynced = true;
 						self.applyFormExclusions();
-						self.setNotice( ( t.pmSynced || 'Meios sincronizados' ) + ' (' + self.pmTypes.length + ')', 'success' );
+						self.setNotice( ( t.pmSyncedMsg || 'Ha %d meios de pagamento disponiveis e sincronizados com o Mercado Pago.' ).replace( '%d', self.pmTypes.length ), 'success' );
 					} )
 					.catch( function ( e ) { self.setNotice( e.message, 'error' ); } )
 					.then( function () { self.pmLoading = false; } );
 			},
-			// Marca como MANTIDO o que NAO esta na lista de excluidos do form escolhido.
+			// Deriva pmKept (boolean) das exclusoes salvas do form. Tipos que o MP
+			// nao deixa excluir (saldo) ficam SEMPRE ativos.
 			applyFormExclusions: function () {
 				var ex = ( CFG.formExclusions && this.pmFormId ) ? ( CFG.formExclusions[ this.pmFormId ] || [] ) : [];
 				var kept = {};
-				this.pmTypes.forEach( function ( tp ) { kept[ tp.id ] = ex.indexOf( tp.id ) === -1; } );
+				this.pmTypes.forEach( function ( tp ) {
+					kept[ tp.id ] = alwaysOn( tp.id ) ? true : ( ex.indexOf( tp.id ) === -1 );
+				} );
 				this.pmKept = kept;
 			},
 			onSelectForm: function ( v ) {
 				this.pmFormId = v;
-				if ( this.pmSynced ) { this.applyFormExclusions(); }
+				// Reaplica as exclusoes do form recem-escolhido se ja sincronizamos os
+				// meios antes -> trocar de formulario NAO exige novo SYNC.
+				if ( this.pmTypes.length ) { this.applyFormExclusions(); }
 			},
 			togglePm: function ( id, val ) {
-				this.pmKept[ id ] = val; // chaves pre-inicializadas -> reativo no Vue 2
+				if ( alwaysOn( id ) ) { return; } // saldo: travado ligado (MP nao deixa excluir)
+				// Substitui o objeto inteiro com booleans limpos -> reatividade garantida
+				// no Vue 2 e elimina o "" que o switcher emite como returnFalse (a causa de
+				// o 2o save nao "pegar" a alteracao e parecer que nao sobrescreve).
+				var self = this;
+				var next = {};
+				this.pmTypes.forEach( function ( tp ) {
+					next[ tp.id ] = alwaysOn( tp.id ) ? true : !! self.pmKept[ tp.id ];
+				} );
+				next[ id ] = !! val;
+				this.pmKept = next;
 			},
 			savePm: function () {
 				var self = this;
-				if ( ! self.pmFormId ) { self.setNotice( t.pmPickForm || 'Escolha um formulario.', 'error' ); return; }
+				if ( ! self.pmFormId ) { self.setNotice( t.pmPickForm || 'Escolha um formulario primeiro.', 'error' ); return; }
+				// Excluidos = tipos NAO mantidos, exceto os que o MP nunca deixa excluir.
 				var excluded = self.pmTypes
-					.filter( function ( tp ) { return ! self.pmKept[ tp.id ]; } )
+					.filter( function ( tp ) { return ! alwaysOn( tp.id ) && ! self.pmKept[ tp.id ]; } )
 					.map( function ( tp ) { return tp.id; } );
-				if ( self.pmTypes.length && excluded.length >= self.pmTypes.length ) {
-					self.setNotice( t.pmKeepOne || 'Mantenha ao menos um meio ativo.', 'error' );
+				var excludable = self.pmTypes.filter( function ( tp ) { return ! alwaysOn( tp.id ); } ).length;
+				if ( excludable && excluded.length >= excludable ) {
+					self.setNotice( t.pmKeepOne || 'Mantenha pelo menos um meio de pagamento ativo.', 'error' );
 					return;
 				}
 				self.pmBusy = true;
 				self.setNotice( t.loading || '...' );
-				api( CFG.urls.pmSave, { form_id: self.pmFormId, excluded: excluded } )
-					.then( function () {
+				return api( CFG.urls.pmSave, { form_id: self.pmFormId, excluded: excluded } )
+					.then( function ( res ) {
+						// Verdade canonica = o que o servidor confirmou ter excluido (ja sem saldo).
+						var saved = ( res && res.excluded ) ? res.excluded : excluded;
 						if ( ! CFG.formExclusions ) { CFG.formExclusions = {}; }
-						CFG.formExclusions[ self.pmFormId ] = excluded;
+						CFG.formExclusions[ self.pmFormId ] = saved;
+						self.applyFormExclusions(); // re-sincroniza a tela com o que foi salvo
 						self.setNotice( t.pmSaved || 'Meios de pagamento salvos!', 'success' );
 					} )
 					.catch( function ( e ) { self.setNotice( e.message, 'error' ); } )
@@ -436,30 +468,47 @@
 				on: { input: self.onSelectForm }
 			} ) );
 
-			// botao SYNC dos meios da conta
-			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
-				button( t.pmSync || 'Sincronizar meios do Mercado Pago', 'accent-border', { click: self.syncPm }, { disabled: self.pmLoading } )
-			] ) );
+			// separador + respiro apos o seletor (bloco de meios nao cola no botao). E3.
+			children.push( h( 'div', { staticClass: 'jfb-mp-plans__pm-sep' } ) );
 
-			// switchers 'manter ativo' + salvar -- so apos SYNC e com form escolhido
-			if ( self.pmSynced && self.pmFormId ) {
-				if ( self.pmTypes.length ) {
-					var pmInner = self.pmTypes.map( function ( tp ) {
-						return h( 'cx-vui-switcher', {
-							attrs: {
-								label: tp.label + ( tp.methods ? ' \u2014 ' + tp.methods : '' ),
-								'wrapper-css': [ 'equalwidth' ],
-								value: !! self.pmKept[ tp.id ]
-							},
-							on: { input: function ( val ) { self.togglePm( tp.id, val ); } }
+			if ( ! self.pmFormId ) {
+				// E1: sem formulario escolhido, nao deixa sincronizar -- so instrui.
+				children.push( h( 'div', { staticClass: 'jfb-mp-plans__hint' }, t.pmChooseFirst || 'Escolha um formulario acima para configurar e sincronizar os meios de pagamento.' ) );
+			} else {
+				// D: form sem config -> avisa o DEFAULT (so cartoes de credito + saldo).
+				if ( ! self.pmHasConfig() ) {
+					children.push( h( 'div', { staticClass: 'cx-vui-notice cx-vui-notice--warning jfb-mp-plans__notice-box' }, t.pmDefaultNote || 'Este formulario ainda nao tem meios definidos: por padrao, aceita apenas cartoes de credito (e o saldo Mercado Pago, que nao pode ser desativado). Sincronize e salve para personalizar.' ) );
+				}
+
+				// botao SYNC dos meios da conta
+				children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
+					button( t.pmSync || 'Sincronizar meios do Mercado Pago', 'accent-border', { click: self.syncPm }, { disabled: self.pmLoading } )
+				] ) );
+
+				// switchers 'manter ativo' + salvar -- so apos SYNC
+				if ( self.pmSynced ) {
+					if ( self.pmTypes.length ) {
+						var pmInner = self.pmTypes.map( function ( tp ) {
+							var locked = alwaysOn( tp.id );
+							return h( 'cx-vui-switcher', {
+								key: tp.id,
+								attrs: {
+									label: tp.label + ( tp.methods ? ' \u2014 ' + tp.methods : '' ),
+									description: locked ? ( t.pmAlwaysOn || 'Sempre disponivel -- o Mercado Pago nao permite desativar o saldo.' ) : '',
+									'wrapper-css': [ 'equalwidth' ],
+									value: !! self.pmKept[ tp.id ],
+									disabled: locked
+								},
+								on: { input: function ( val ) { self.togglePm( tp.id, val ); } }
+							} );
 						} );
-					} );
-					children.push( h( 'div', { staticClass: 'cx-vui-inner-panel jfb-mp-plans__list' }, pmInner ) );
-					children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
-						button( t.pmSave2 || 'Salvar meios deste formulario', 'accent', { click: self.savePm }, { disabled: self.pmBusy } )
-					] ) );
-				} else {
-					children.push( h( 'div', { staticClass: 'jfb-mp-plans__empty' }, t.pmEmpty || 'Nenhum meio retornado.' ) );
+						children.push( h( 'div', { key: 'pm-panel-' + self.pmFormId, staticClass: 'cx-vui-inner-panel jfb-mp-plans__list' }, pmInner ) );
+						children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
+							button( t.pmSave2 || 'Salvar meios deste formulario', 'accent', { click: self.savePm }, { disabled: self.pmBusy } )
+						] ) );
+					} else {
+						children.push( h( 'div', { staticClass: 'jfb-mp-plans__empty' }, t.pmEmpty || 'Nenhum meio retornado.' ) );
+					}
 				}
 			}
 
