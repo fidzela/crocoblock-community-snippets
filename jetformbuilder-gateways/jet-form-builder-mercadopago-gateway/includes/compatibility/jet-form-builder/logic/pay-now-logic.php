@@ -78,6 +78,16 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	const QUERY_VAR = 'preference_id';
 
 	/**
+	 * Sinaliza que o WEBHOOK já efetivou o pagamento (CREATED->COMPLETED) e já
+	 * rodou as ações de sucesso (PaymentFulfillment) ANTES de o cliente voltar do
+	 * checkout. Quando true, o retorno do navegador apenas EXIBE o sucesso — não
+	 * re-dispara o Gateway_Success_Event (evita rodar as ações do form 2x).
+	 *
+	 * @var bool
+	 */
+	protected $already_fulfilled = false;
+
+	/**
 	 * Token vindo da URL no retorno.
 	 *
 	 * @return string
@@ -210,10 +220,32 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	/**
 	 * Retorno do checkout: confirma o pagamento de verdade.
 	 *
+	 * CORRIDA WEBHOOK x RETORNO: com account_money (saldo) o pagamento é
+	 * INSTANTÂNEO, então o webhook (PaymentNotification::confirm) efetiva
+	 * CREATED->COMPLETED e roda as ações de sucesso (PaymentFulfillment) ANTES de o
+	 * cliente voltar do countdown do checkout. Nesse caso a linha já está COMPLETED:
+	 * tratamos como SUCESSO (sem re-disparar as ações), em vez de lançar
+	 * "already captured" — que o on_catch do core convertia em 'failed' e exibia
+	 * `status=derror`, mesmo com o pagamento APROVADO e debitado.
+	 *
 	 * @throws Gateway_Exception
 	 */
 	public function process_after() {
-		if ( 'CREATED' !== $this->get_scenario_row( 'status' ) ) {
+		$current_status = $this->get_scenario_row( 'status' );
+
+		// Webhook venceu a corrida e já cumpriu tudo -> só exibir sucesso.
+		if ( 'COMPLETED' === $current_status ) {
+			$this->already_fulfilled = true;
+
+			// Status de sucesso em MEMÓRIA (o banco já está COMPLETED pelo webhook);
+			// dirige get_process_status()/get_result_message() p/ a msg de sucesso.
+			$this->scenario_row( array( 'status' => 'approved' ) );
+
+			return;
+		}
+
+		// VOIDED/REFUNDED/etc.: não há captura a confirmar (comportamento mantido).
+		if ( 'CREATED' !== $current_status ) {
 			throw new Gateway_Exception( 'Payment was already captured' );
 		}
 
@@ -263,6 +295,24 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 
 			throw new Gateway_Exception( $exception->getMessage() );
 		}
+	}
+
+	/**
+	 * Executa o evento do status (success/failed) no retorno do navegador.
+	 *
+	 * Quando o webhook já venceu a corrida e disparou o Gateway_Success_Event (via
+	 * PaymentFulfillment), NÃO re-executamos as ações do form — apenas exibimos o
+	 * resultado. Sem este guard, pagar com saldo (webhook instantâneo) rodaria as
+	 * ações 2x (e-mail, criar post, webhooks de 3os, etc.).
+	 *
+	 * @param string $type
+	 */
+	public function process_status( $type = 'success' ) {
+		if ( $this->already_fulfilled ) {
+			return;
+		}
+
+		parent::process_status( $type );
 	}
 
 	/**
