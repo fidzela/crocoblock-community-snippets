@@ -118,3 +118,40 @@ Default ausente = comportamento ATUAL (retrocompatível).
 - `excluded_payment_methods` (granularidade por método) — a estrutura já comporta; ligar depois se preciso.
 - Outros `additional-settings` (expiração, statement_descriptor, shipments…) — o objeto `_jfb_mp_preferences` já é o lugar deles.
 - Suite PHPUnit própria (inspirada nos `tests/` da SDK) — iniciativa separada.
+
+---
+
+## 7. REVISÃO pós-feedback (decisão refinada)
+
+**Esclarecendo a confusão "aba vs form":** o ideal seria no MODAL do gateway (imagem 1,
+form-level). Mas o modal é renderizado por um **bundle compilado** (`builder.admin.js`,
+sem fonte/build aqui). Mesmo que o bundle seja "genérico", **depender do comportamento
+interno dele pra renderizar um campo NOVO é frágil** e arrisca quebrar o editor que
+funciona. A `meta box` que sugeri antes também não encaixa bem (o editor do JetForm é
+Vue próprio). **Conclusão: o lugar SEGURO é a aba "MercadoPago Settings"** (imagem 2),
+que é 100% nosso (cx-vui, sem bundle). Foi mal pela confusão.
+
+**🔒 CUIDADO CRÍTICO (seu ponto principal) — isolamento das credenciais:**
+Confirmei no código (`base-mercadopago.php::get_credentials_by_form`): quando o form usa
+**"Use Global Settings"**, o JFB **IGNORA o blob de configs por-form** do gateway e usa as
+globais. Logo, se a config de meios de pagamento fosse guardada NESSE blob, ela seria
+**ignorada** com o toggle global ligado — exatamente o que você temia. **Solução:** a
+config de meios fica em **armazenamento SEPARADO** (option/post-meta com a chave do
+`form_id`), **fora** das credenciais. É lida no submit por `form_id`, **independente** do
+`use_global`. As credenciais continuam **globais e intactas** (a API de Planos não muda).
+
+**UI na aba (replicando o padrão dos Planos, do seu jeito):**
+1. Botão **SYNC** → `GET /v1/payment_methods` (traz os meios ATUAIS da conta → se o MP
+   mudar/incluir, continua funcionando). Mensagem "X meios encontrados e sincronizados".
+2. Multi-select **"deixar ATIVOS estes meios"** (selecionar o que MANTÉM; o resto é
+   excluído) — invertido, mais intuitivo, como você sugeriu.
+3. Campo **Formulário** (id/seletor) → a config é por-form.
+4. Salva em `option`/`post-meta` separado, lido pelo filtro `excluded-payment-types` que
+   JÁ existe no `create-preference.php`.
+
+**Alternativa mais simples (fallback):** presets FIXOS na aba — "Só PIX", "Só Cartões",
+"PIX + Cartões" — sem SYNC. Menos flexível, mas zero chamadas. (O dinâmico é melhor.)
+
+**Escopo travado:** **PAY NOW apenas.** Subscription = cartão (atual), **NÃO mexer**.
+**Risco:** baixo — aditivo, isolado das credenciais, sem tocar editor/bundle, sem
+dependência nova; sem config = comportamento de hoje.
