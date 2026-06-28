@@ -18,10 +18,11 @@
  *    authorized (vindo de pendente)  -> ATIVA (o 1º Gateway_Success_Event sai no
  *                                       `subscription_authorized_payment`, igual
  *                                       ao invoice.paid do Stripe) -> sem evento
- *    authorized (estado TERMINAL)    -> IGNORADO (§5.2: SubscriptionStatusGuard não
- *                                       reativa CANCELLED/EXPIRED/REFUNDED)
  *    paused                          -> SUSPENDED   -> SubscriptionSuspendedEvent
  *    cancelled                       -> CANCELLED   -> SubscriptionCancelEvent
+ *    (qualquer status, se a assinatura LOCAL já está TERMINAL)
+ *                                    -> IGNORADO (§5.2/§11.3: SubscriptionStatusGuard
+ *                                       não reage em CANCELLED/EXPIRED/REFUNDED)
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
@@ -122,19 +123,22 @@ class PreapprovalNotification {
 		$current  = (string) ( $row['status'] ?? '' );
 		$resource = new Subscription( $row );
 
+		// GUARD §5.2/§11.3: assinatura local em estado TERMINAL (CANCELLED/EXPIRED/
+		// REFUNDED) NÃO reage a NENHUMA transição de status do MP. Cobre tanto a
+		// reentrega tardia de um `authorized` (não ressuscita) quanto o `cancelled`
+		// que NÓS MESMOS provocamos ao encerrar a assinatura por estorno
+		// (Subscription_Refund_Closer) — evita flipar status e re-disparar evento.
+		if ( SubscriptionStatusGuard::is_terminal( $current ) ) {
+			WebhookConfig::log(
+				'Preapproval status para assinatura TERMINAL — ignorado.',
+				array( 'subscription_id' => $row['id'] ?? 0, 'status' => $current, 'mp_status' => $mp_status )
+			);
+
+			return;
+		}
+
 		switch ( $mp_status ) {
 			case 'authorized':
-				// GUARD §5.2: não ressuscitar assinatura TERMINAL (CANCELLED/EXPIRED/
-				// REFUNDED) a partir de um `authorized` tardio/reentregue. A reativação
-				// legítima SUSPENDED->authorized continua valendo (SUSPENDED não é terminal).
-				if ( SubscriptionStatusGuard::is_terminal( $current ) ) {
-					WebhookConfig::log(
-						'Preapproval `authorized` para assinatura TERMINAL — ignorado (nao reativa).',
-						array( 'subscription_id' => $row['id'] ?? 0, 'status' => $current )
-					);
-					break;
-				}
-
 				$was_suspended = ( SubscribeNow::SUSPENDED === $current );
 
 				$resource->set_active();

@@ -36,6 +36,7 @@
 namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookEvents;
 
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Payment;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Subscription_Refund_Closer;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
@@ -270,6 +271,9 @@ class PaymentNotification {
 	 * por external_reference (pay-now) OU por transaction_id == data_id
 	 * (assinatura, onde o transaction_id já é o payment_id do MP).
 	 *
+	 * Se a cobrança é de assinatura, ENCERRA a assinatura (§12.4/§12.5, decisão do
+	 * dono): cancela a preapproval no MP + marca CANCELLED, via Subscription_Refund_Closer.
+	 *
 	 * @param array  $payment
 	 * @param string $data_id
 	 *
@@ -286,21 +290,36 @@ class PaymentNotification {
 			return self::ok( 'refund: no matching record' );
 		}
 
-		if ( 'REFUNDED' === ( $row['status'] ?? '' ) ) {
-			return self::ok( 'already refunded' );
+		// Marca o Payment REFUNDED (transição atômica COMPLETED -> REFUNDED). Se já
+		// estava REFUNDED (corrida/reentrega), NÃO retorna cedo: ainda tentamos
+		// encerrar a assinatura (idempotente), cobrindo o caso de o cancel no MP ter
+		// falhado numa entrega anterior — a reentrega do MP re-tenta até encerrar.
+		if ( 'REFUNDED' !== ( $row['status'] ?? '' ) ) {
+			try {
+				( new Payment_Model() )->update(
+					array( 'status' => 'REFUNDED' ),
+					array(
+						'id'     => $row['id'],
+						'status' => 'COMPLETED',
+					)
+				);
+			} catch ( Sql_Exception $exception ) {
+				// Não estava COMPLETED (ex.: corrida com o admin) -> idempotente, segue.
+			}
 		}
 
-		try {
-			( new Payment_Model() )->update(
-				array( 'status' => 'REFUNDED' ),
-				array(
-					'id'     => $row['id'],
-					'status' => 'COMPLETED',
-				)
-			);
-		} catch ( Sql_Exception $exception ) {
-			// Não estava COMPLETED (ou já mudou) -> idempotente.
-			return self::ok( 'refund: not completed' );
+		// DECISÃO DO DONO (§12.4/§12.5): estorno ENCERRA a assinatura. Se este
+		// pagamento é uma cobrança de assinatura (external_reference jfbmp-sub-<id>),
+		// cancela a preapproval no MP + marca a assinatura CANCELLED (idempotente).
+		// Pay-now (outro external_reference) -> não entra aqui.
+		$external_reference = (string) ( $payment['external_reference'] ?? '' );
+
+		if ( 0 === strpos( $external_reference, 'jfbmp-sub-' ) ) {
+			$subscription = $this->find_subscription( $external_reference );
+
+			if ( null !== $subscription ) {
+				Subscription_Refund_Closer::close( $subscription, WebhookConfig::access_token() );
+			}
 		}
 
 		return self::ok( 'refunded' );

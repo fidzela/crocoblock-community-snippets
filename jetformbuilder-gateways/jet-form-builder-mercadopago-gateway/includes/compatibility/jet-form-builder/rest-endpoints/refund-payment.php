@@ -28,8 +28,8 @@ namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoin
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Refund_Payment_Action;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Search_Payments;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Controller;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Subscription_Refund_Closer;
 use Jet_FB_Paypal\QueryViews\PaymentsWithSales;
-use Jet_FB_Paypal\Resources\Subscription;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
@@ -132,12 +132,22 @@ class Refund_Payment extends Rest_Api_Endpoint_Base {
 			// Já marcado (corrida com o webhook). Segue: o estorno no MP foi OK.
 		}
 
-		// Se o pagamento é de assinatura, marca a assinatura como REFUNDED.
-		( new Subscription( $payment['subscription'] ?? array() ) )->set_refunded();
+		// DECISÃO DO DONO (§12.4/§12.5): estorno ENCERRA a assinatura. Se este
+		// pagamento é de assinatura, cancela a preapproval no MP (para parar de
+		// cobrar) + marca a assinatura CANCELLED. Idempotente; pay-now -> no-op.
+		$sub_result = Subscription_Refund_Closer::close( $payment['subscription'] ?? array(), $token );
+
+		$message = __( 'Successfully refunded payment!', 'jet-form-builder-mercadopago-gateway' );
+
+		if ( 'mp cancel failed' === $sub_result ) {
+			$message = __( 'Payment refunded, but the subscription could NOT be cancelled in Mercado Pago — please cancel it manually.', 'jet-form-builder-mercadopago-gateway' );
+		} elseif ( 'closed' === $sub_result ) {
+			$message = __( 'Successfully refunded payment and cancelled the subscription!', 'jet-form-builder-mercadopago-gateway' );
+		}
 
 		return new WP_REST_Response(
 			array(
-				'message'    => __( 'Successfully refunded payment!', 'jet-form-builder-mercadopago-gateway' ),
+				'message'    => $message,
 				'payment_id' => $id,
 			),
 			200
