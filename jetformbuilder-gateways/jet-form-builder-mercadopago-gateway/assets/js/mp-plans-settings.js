@@ -120,7 +120,15 @@
 				noticeType: '',
 				showCancelled: false,
 				showHelp: false,
-				form: { reason: '', amount: '', frequency: 1, frequency_type: 'months', currency: 'BRL' }
+				form: { reason: '', amount: '', frequency: 1, frequency_type: 'months', currency: 'BRL' },
+				// Meios de pagamento por-formulário (Pay Now). pmKept[typeId]=true => MANTÉM
+				// (o resto é excluído). pmFormId = formulário sendo configurado.
+				pmFormId: '',
+				pmTypes: [],
+				pmKept: {},
+				pmSynced: false,
+				pmLoading: false,
+				pmBusy: false
 			};
 		},
 		computed: {
@@ -203,6 +211,59 @@
 				api( CFG.urls.delete, { id: id } )
 					.then( function () { self.setNotice( t.deleted, 'success' ); self.load(); } )
 					.catch( function ( e ) { self.setNotice( e.message, 'error' ); } );
+			},
+
+			// --- meios de pagamento (Pay Now) -----------------------------------
+			// SYNC: busca os meios ATUAIS da conta no MP (dinamico -- reflete mudancas).
+			syncPm: function () {
+				var self = this;
+				if ( ! CFG.hasToken ) { self.setNotice( t.noToken, 'error' ); return; }
+				self.pmLoading = true;
+				self.setNotice( '' );
+				api( CFG.urls.pmList, { force_refresh: true } )
+					.then( function ( res ) {
+						self.pmTypes = ( res && res.data ) || [];
+						self.pmSynced = true;
+						self.applyFormExclusions();
+						self.setNotice( ( t.pmSynced || 'Meios sincronizados' ) + ' (' + self.pmTypes.length + ')', 'success' );
+					} )
+					.catch( function ( e ) { self.setNotice( e.message, 'error' ); } )
+					.then( function () { self.pmLoading = false; } );
+			},
+			// Marca como MANTIDO o que NAO esta na lista de excluidos do form escolhido.
+			applyFormExclusions: function () {
+				var ex = ( CFG.formExclusions && this.pmFormId ) ? ( CFG.formExclusions[ this.pmFormId ] || [] ) : [];
+				var kept = {};
+				this.pmTypes.forEach( function ( tp ) { kept[ tp.id ] = ex.indexOf( tp.id ) === -1; } );
+				this.pmKept = kept;
+			},
+			onSelectForm: function ( v ) {
+				this.pmFormId = v;
+				if ( this.pmSynced ) { this.applyFormExclusions(); }
+			},
+			togglePm: function ( id, val ) {
+				this.pmKept[ id ] = val; // chaves pre-inicializadas -> reativo no Vue 2
+			},
+			savePm: function () {
+				var self = this;
+				if ( ! self.pmFormId ) { self.setNotice( t.pmPickForm || 'Escolha um formulario.', 'error' ); return; }
+				var excluded = self.pmTypes
+					.filter( function ( tp ) { return ! self.pmKept[ tp.id ]; } )
+					.map( function ( tp ) { return tp.id; } );
+				if ( self.pmTypes.length && excluded.length >= self.pmTypes.length ) {
+					self.setNotice( t.pmKeepOne || 'Mantenha ao menos um meio ativo.', 'error' );
+					return;
+				}
+				self.pmBusy = true;
+				self.setNotice( t.loading || '...' );
+				api( CFG.urls.pmSave, { form_id: self.pmFormId, excluded: excluded } )
+					.then( function () {
+						if ( ! CFG.formExclusions ) { CFG.formExclusions = {}; }
+						CFG.formExclusions[ self.pmFormId ] = excluded;
+						self.setNotice( t.pmSaved || 'Meios de pagamento salvos!', 'success' );
+					} )
+					.catch( function ( e ) { self.setNotice( e.message, 'error' ); } )
+					.then( function () { self.pmBusy = false; } );
 			}
 		},
 		render: function ( h ) {
@@ -358,6 +419,49 @@
 			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
 				button( t.createBtn || 'Criar plano', 'accent', { click: self.create }, { disabled: self.busy } )
 			] ) );
+
+			// ---- secao: meios de pagamento (Pay Now) --------------------------
+			children.push( sectionTitle( t.pmTitle || 'Meios de pagamento (Pay Now)' ) );
+			children.push( h( 'p', { staticClass: 'fb-description jfb-mp-plans__intro' }, t.pmIntro || '' ) );
+
+			// seletor de formulario
+			children.push( h( 'cx-vui-select', {
+				attrs: {
+					label: t.pmForm || 'Formulario',
+					'wrapper-css': [ 'equalwidth' ],
+					size: 'fullwidth',
+					'options-list': ( CFG.forms || [] ),
+					value: self.pmFormId
+				},
+				on: { input: self.onSelectForm }
+			} ) );
+
+			// botao SYNC dos meios da conta
+			children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
+				button( t.pmSync || 'Sincronizar meios do Mercado Pago', 'accent-border', { click: self.syncPm }, { disabled: self.pmLoading } )
+			] ) );
+
+			// switchers 'manter ativo' + salvar -- so apos SYNC e com form escolhido
+			if ( self.pmSynced && self.pmFormId ) {
+				if ( self.pmTypes.length ) {
+					var pmInner = self.pmTypes.map( function ( tp ) {
+						return h( 'cx-vui-switcher', {
+							attrs: {
+								label: tp.label + ( tp.methods ? ' \u2014 ' + tp.methods : '' ),
+								'wrapper-css': [ 'equalwidth' ],
+								value: !! self.pmKept[ tp.id ]
+							},
+							on: { input: function ( val ) { self.togglePm( tp.id, val ); } }
+						} );
+					} );
+					children.push( h( 'div', { staticClass: 'cx-vui-inner-panel jfb-mp-plans__list' }, pmInner ) );
+					children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
+						button( t.pmSave2 || 'Salvar meios deste formulario', 'accent', { click: self.savePm }, { disabled: self.pmBusy } )
+					] ) );
+				} else {
+					children.push( h( 'div', { staticClass: 'jfb-mp-plans__empty' }, t.pmEmpty || 'Nenhum meio retornado.' ) );
+				}
+			}
 
 			// ---- notice --------------------------------------------------------
 			if ( self.notice ) {

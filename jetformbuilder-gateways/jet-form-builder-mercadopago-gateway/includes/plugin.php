@@ -12,6 +12,7 @@ use Jet_FB_Mercadopago_Gateway\FormEvents\EventsManager;
 use Jet_FB_Mercadopago_Gateway\Admin\Plans_Page;
 use Jet_FB_Mercadopago_Gateway\Recovery\Reconciler;
 use Jet_FB_Mercadopago_Gateway\Recovery\Pending_Effects;
+use Jet_FB_Mercadopago_Gateway\Payment_Methods_Config;
 
 // If this file is called directly, abort.
 if ( ! defined( 'WPINC' ) ) {
@@ -79,6 +80,10 @@ class Plugin {
 		// Flag de "efeitos pendentes": expõe a reexecução manual das ações do form
 		// (hook jet-form-builder/mercadopago/rerun-effects) quando um evento falhou.
 		Pending_Effects::register();
+
+		// Meios de pagamento por-formulário (Pay Now): hooka o filtro de exclusão de
+		// tipos que o Create_Preference já dispara. Isolado das credenciais.
+		Payment_Methods_Config::register();
 	}
 
 	/**

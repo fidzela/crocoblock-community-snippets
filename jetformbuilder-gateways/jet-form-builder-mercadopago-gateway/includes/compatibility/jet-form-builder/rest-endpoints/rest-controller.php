@@ -33,6 +33,10 @@ class Rest_Controller extends Rest_Api_Controller_Base {
 			new Fetch_Mercadopago_Plans(),
 			new Create_Mercadopago_Plan(),
 			new Delete_Mercadopago_Plan(),
+			// Meios de pagamento por-formulário (Pay Now): SYNC dos meios da conta +
+			// salvar os tipos excluídos por form. Sempre disponíveis (admin).
+			new Fetch_Payment_Methods(),
+			new Save_Form_Payment_Methods(),
 		);
 
 		// Gerenciamento de ASSINATURA (cancelar/suspender pelo admin). Ligado por

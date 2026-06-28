@@ -3,7 +3,9 @@
 > Objetivo: permitir escolher, **por formulário**, quais meios de pagamento o
 > Checkout Pro aceita no Pay Now (ex.: só PIX num form; cartão+PIX em outro;
 > excluir boleto). Sólido, sem quebrar o que funciona, o mais próximo possível do
-> CORE/base. **Status: PLANO (sem código ainda).**
+> CORE/base. **Status: ✅ IMPLEMENTADO (v2.0.28)** — seção "Meios de pagamento (Pay Now)"
+> na aba MercadoPago Settings, por-formulário, com SYNC dinâmico + multi-select
+> "manter ativos", em option ISOLADA das credenciais. Backend testado (standalone).
 
 ---
 

@@ -23,6 +23,7 @@
 namespace Jet_FB_Mercadopago_Gateway\Admin;
 
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Controller;
+use Jet_FB_Mercadopago_Gateway\Payment_Methods_Config;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -53,6 +54,51 @@ class Plans_Page {
 			return '';
 		}
 		return (string) ( $creds['secret'] ?? '' );
+	}
+
+	/**
+	 * Lista os formulários do JetFormBuilder para o seletor da seção de meios de
+	 * pagamento (Pay Now). [{ value:id, label:title }].
+	 *
+	 * @return array
+	 */
+	private static function forms_list(): array {
+		$posts = get_posts(
+			array(
+				'post_type'   => 'jet-form-builder',
+				'post_status' => array( 'publish', 'draft' ),
+				'numberposts' => 200,
+				'orderby'     => 'title',
+				'order'       => 'ASC',
+			)
+		);
+
+		// Placeholder no topo para o select não auto-selecionar o 1º formulário.
+		$forms = array(
+			array( 'value' => '', 'label' => __( '— Selecione um formulário —', 'jet-form-builder-mercadopago-gateway' ) ),
+		);
+
+		foreach ( $posts as $post ) {
+			$title   = '' !== trim( (string) $post->post_title ) ? $post->post_title : ( '#' . $post->ID );
+			$forms[] = array(
+				'value' => (string) $post->ID,
+				'label' => $title . ' (#' . $post->ID . ')',
+			);
+		}
+
+		return $forms;
+	}
+
+	/**
+	 * Mapa form_id -> [tipos excluídos] já salvos. Lido da option ISOLADA das
+	 * credenciais (Payment_Methods_Config) — nunca do blob do gateway.
+	 *
+	 * @return array
+	 */
+	private static function form_exclusions(): array {
+		$map = get_option( Payment_Methods_Config::OPTION, array() );
+
+		return is_array( $map ) ? $map : array();
 	}
 
 	/**
@@ -103,7 +149,13 @@ class Plans_Page {
 					'list'   => rest_url( self::REST_NS . '/fetch-mercadopago-plans' ),
 					'create' => rest_url( self::REST_NS . '/create-mercadopago-plan' ),
 					'delete' => rest_url( self::REST_NS . '/delete-mercadopago-plan' ),
+					'pmList' => rest_url( self::REST_NS . '/fetch-mercadopago-payment-methods' ),
+					'pmSave' => rest_url( self::REST_NS . '/save-mercadopago-payment-methods' ),
 				),
+				// Meios de pagamento por-form (Pay Now): lista de formulários + exclusões
+				// já salvas (option ISOLADA das credenciais).
+				'forms'          => self::forms_list(),
+				'formExclusions' => self::form_exclusions(),
 				'i18n'     => array(
 					// `title` = label da ABA (lateral, compacta como "ActiveCampaign API").
 					// `pageTitle` = título grande no topo do conteúdo.
@@ -150,6 +202,17 @@ class Plans_Page {
 					/* translators: %d: número de planos cancelados */
 					'showCancelledDesc' => __( 'Exibir também os planos cancelados (%d).', 'jet-form-builder-mercadopago-gateway' ),
 					'noToken'       => __( 'Configure o Access Token em JetFormBuilder → Settings → Payments Gateways → Mercado Pago. Esta aba usa SEMPRE essa chave (server-side).', 'jet-form-builder-mercadopago-gateway' ),
+					// Seção "Meios de pagamento" (Pay Now).
+					'pmTitle'       => __( 'Meios de pagamento (Pay Now)', 'jet-form-builder-mercadopago-gateway' ),
+					'pmIntro'       => __( 'Escolha, por FORMULÁRIO, quais meios o Checkout Pro aceita no Pay Now (ex.: só Pix, ou cartões + Pix, ou excluir boleto). Sincronize os meios da sua conta, selecione um formulário e deixe ATIVOS os que devem aparecer — o restante é excluído. Vale só para Pay Now; assinaturas são sempre cartão de crédito (recorrência).', 'jet-form-builder-mercadopago-gateway' ),
+					'pmForm'        => __( 'Formulário', 'jet-form-builder-mercadopago-gateway' ),
+					'pmSync'        => __( 'Sincronizar meios do Mercado Pago', 'jet-form-builder-mercadopago-gateway' ),
+					'pmSynced'      => __( 'Meios sincronizados', 'jet-form-builder-mercadopago-gateway' ),
+					'pmSave2'       => __( 'Salvar meios deste formulário', 'jet-form-builder-mercadopago-gateway' ),
+					'pmSaved'       => __( 'Meios de pagamento salvos!', 'jet-form-builder-mercadopago-gateway' ),
+					'pmPickForm'    => __( 'Escolha um formulário primeiro.', 'jet-form-builder-mercadopago-gateway' ),
+					'pmKeepOne'     => __( 'Mantenha pelo menos um meio de pagamento ativo.', 'jet-form-builder-mercadopago-gateway' ),
+					'pmEmpty'       => __( 'Nenhum meio de pagamento retornado pela conta. Sincronize novamente.', 'jet-form-builder-mercadopago-gateway' ),
 				),
 			)
 		);
