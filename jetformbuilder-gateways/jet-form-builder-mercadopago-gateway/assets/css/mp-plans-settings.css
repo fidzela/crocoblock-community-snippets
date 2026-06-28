@@ -2,10 +2,14 @@
  * Mercado Pago Plans — estilos da aba de settings.
  *
  * Só o que os componentes nativos cx-vui NÃO cobrem: títulos de seção e as linhas
- * de plano. Tudo usa os MESMOS tokens do core (lidos de cx-vue-ui-components.css):
- *   separador/borda  #ececec   ·  título  #23282d   ·  descrição  #7b7e81
- *   painel  #f5f5f5  ·  ativo  #1a7f37  ·  cancelado/excluir  #b32d2e / #c92c2c
- * Os campos, selects, switcher e botões são 100% cx-vui (sem CSS aqui).
+ * de plano. Campos, selects, switcher e BOTÕES são 100% cx-vui (sem CSS aqui) — se
+ * o core/JetEngine reestiliza o componente, a aba acompanha automaticamente.
+ *
+ * Cores: os CINZAS de texto/borda são a paleta do WP admin (mesma que o próprio WP
+ * hardcoda — não há variável): separador #ececec · título #23282d/#1d2327 ·
+ * descrição #646970/#7b7e81. Já o vermelho de ERRO usa a VARIÁVEL do cx-vui
+ * (`var(--style-link-error, #b32d2e)`) -> acompanha o tema do cx-vui, com fallback.
+ * Verde de ativo #1a7f37 (sucesso padrão, sem variável cx-vui equivalente).
  */
 
 .jfb-mp-plans {
@@ -127,7 +131,7 @@
 }
 
 .jfb-mp-plans__badge.is-cancelled {
-	color: #b32d2e;
+	color: var( --style-link-error, #b32d2e );
 }
 
 .jfb-mp-plans__actions {
@@ -145,7 +149,7 @@
 }
 
 .jfb-mp-plans__notice.is-error {
-	color: #b32d2e;
+	color: var( --style-link-error, #b32d2e );
 }
 
 .jfb-mp-plans__notice.is-success {
