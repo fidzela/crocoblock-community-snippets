@@ -53,6 +53,12 @@ class Reconciler {
 	// Cap por execução: backstop contra timeout de cron num backlog (cada registro
 	// faz 1-3 chamadas ao MP). Um backlog grande é drenado ao longo de várias runs.
 	const MAX_PER_RUN   = 25;
+	// Teto de linhas LIDAS por status (newest-first) — evita carregar milhares de
+	// pay-now CREATED abandonados em memória num site movimentado.
+	const FETCH_LIMIT   = 200;
+	// Além disso, um APPROVAL_PENDING / CREATED é tratado como abandonado (não
+	// adianta consultar o MP a cada hora pra sempre) e é ignorado pela varredura.
+	const MAX_AGE_DAYS  = 7;
 
 	/**
 	 * Registra o handler do cron e agenda a recorrência (uma vez). Chamado no
@@ -139,7 +145,7 @@ class Reconciler {
 				continue;
 			}
 
-			if ( self::too_new( (string) ( $row['created_at'] ?? '' ) ) ) {
+			if ( self::too_new( (string) ( $row['created_at'] ?? '' ) ) || self::too_old( (string) ( $row['created_at'] ?? '' ) ) ) {
 				continue;
 			}
 
@@ -185,7 +191,7 @@ class Reconciler {
 				continue;
 			}
 
-			if ( self::too_new( (string) ( $row['created_at'] ?? '' ) ) ) {
+			if ( self::too_new( (string) ( $row['created_at'] ?? '' ) ) || self::too_old( (string) ( $row['created_at'] ?? '' ) ) ) {
 				continue;
 			}
 
@@ -239,8 +245,10 @@ class Reconciler {
 	 */
 	private static function fetch( string $view_class, string $status ): array {
 		try {
-			$query = $view_class::find( array( 'status' => $status ) )->query();
-			$rows  = $query->db()->get_results( $query->sql(), ARRAY_A );
+			$query = $view_class::find( array( 'status' => $status ) )
+				->set_limit( array( self::FETCH_LIMIT ) )
+				->query();
+			$rows = $query->db()->get_results( $query->sql(), ARRAY_A );
 
 			return is_array( $rows ) ? $rows : array();
 		} catch ( \Throwable $e ) {
@@ -274,5 +282,27 @@ class Reconciler {
 		}
 
 		return ( time() - $ts ) < ( self::GRACE_MINUTES * MINUTE_IN_SECONDS );
+	}
+
+	/**
+	 * Registro velho demais? Além do MAX_AGE_DAYS tratamos como abandonado (a
+	 * janela de retry do MP já esgotou; consultar pra sempre é desperdício).
+	 *
+	 * @param string $created_at TIMESTAMP do banco (UTC).
+	 *
+	 * @return bool
+	 */
+	private static function too_old( string $created_at ): bool {
+		if ( '' === $created_at ) {
+			return false;
+		}
+
+		$ts = strtotime( $created_at . ' UTC' );
+
+		if ( false === $ts ) {
+			return false;
+		}
+
+		return ( time() - $ts ) > ( self::MAX_AGE_DAYS * DAY_IN_SECONDS );
 	}
 }
