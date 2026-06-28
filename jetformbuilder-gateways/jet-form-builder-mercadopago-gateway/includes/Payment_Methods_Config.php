@@ -50,6 +50,21 @@ class Payment_Methods_Config {
 	);
 
 	/**
+	 * DEFAULT quando o form NÃO tem config: SÓ CARTÕES DE CRÉDITO (pedido do dono).
+	 * Excluímos tudo, exceto `credit_card` (e `account_money`, que o MP não deixa
+	 * excluir — ver NEVER_EXCLUDE; fica sempre disponível). Então, na prática, o
+	 * default mostra cartão de crédito + saldo MP.
+	 */
+	const DEFAULT_EXCLUDED = array( 'debit_card', 'ticket', 'bank_transfer', 'atm', 'prepaid_card' );
+
+	/**
+	 * Tipos que o MP NÃO permite excluir no Checkout Pro desta conta (erro real:
+	 * "account_money cannot be excluded", HTTP 400, que QUEBRAVA o pagamento). NUNCA
+	 * vão para `excluded_payment_types` — ficam sempre disponíveis no checkout.
+	 */
+	const NEVER_EXCLUDE = array( 'account_money' );
+
+	/**
 	 * Liga o hook no filtro que o Create_Preference já dispara. Chamado no bootstrap.
 	 *
 	 * @return void
@@ -73,19 +88,18 @@ class Payment_Methods_Config {
 	 * @return array
 	 */
 	public static function filter_excluded( $default, $action = null ): array {
-		$default = is_array( $default ) ? $default : array();
-		$form_id = self::current_form_id();
+		$form_id  = self::current_form_id();
+		$excluded = $form_id ? self::get_excluded( $form_id ) : null;
 
-		if ( ! $form_id ) {
-			return $default;
-		}
-
-		$excluded = self::get_excluded( $form_id );
-
-		// null = sem config para este form -> mantém o default (comportamento atual).
+		// SEM config (form novo, ou sem form no contexto) -> DEFAULT do dono = SÓ
+		// cartões de crédito (antes herdava o default do create-preference).
 		if ( null === $excluded ) {
-			return $default;
+			$excluded = self::DEFAULT_EXCLUDED;
 		}
+
+		// NUNCA excluir os tipos que o MP recusa (account_money), senão o MP rejeita a
+		// preference (HTTP 400 "account_money cannot be excluded") e o pagamento falha.
+		$excluded = array_values( array_diff( $excluded, self::NEVER_EXCLUDE ) );
 
 		// Shape do MP: [ ['id'=>'ticket'], ... ].
 		return array_map(
@@ -158,9 +172,9 @@ class Payment_Methods_Config {
 		if ( null === $excluded ) {
 			unset( $map[ $key ] );
 		} else {
-			$map[ $key ] = array_values(
-				array_intersect( array_map( 'strval', (array) $excluded ), self::TYPE_IDS )
-			);
+			$clean       = array_intersect( array_map( 'strval', (array) $excluded ), self::TYPE_IDS );
+			// account_money nunca é excluível (MP) -> não guardamos na lista.
+			$map[ $key ] = array_values( array_diff( $clean, self::NEVER_EXCLUDE ) );
 		}
 
 		// autoload=false: config de admin, lida só no submit/edição.

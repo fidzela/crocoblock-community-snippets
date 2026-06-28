@@ -42,7 +42,8 @@ Funciona ponta-a-ponta: pay-now + assinatura, ativação/cobrança/cancel/suspen
 > **Escopo travado: PAY NOW.** Subscription = cartão (Preapproval), NÃO alterar — exceto o payer info (item F), que vale p/ os dois.
 
 ### FASE 1 — bugs que QUEBRAM o pagamento (críticos)
-- [ ] **(A) `account_money cannot be excluded`** — o MP **NÃO permite excluir `account_money`** (saldo MP) no Checkout Pro desta conta. Erro real ao editar a config e enviar:
+- [x] **(A) `account_money cannot be excluded`** ✅ FEITO (v2.0.29, commit a seguir): `Payment_Methods_Config` nunca envia/guarda `account_money` em excluded (`NEVER_EXCLUDE`). Testado standalone. **Falta UI:** desabilitar o switcher do "Saldo" (sempre ativo) + nota.
+  - *Contexto/evidência:* o MP **NÃO permite excluir `account_money`** (saldo MP) no Checkout Pro desta conta. Erro real ao editar a config e enviar:
   `Gateway_Exception: account_money cannot be excluded` em `pay-now-logic.php:173` (HTTP 400 do MP). **Fix:** NUNCA enviar `account_money` em `excluded_payment_types` → filtrar fora em `Payment_Methods_Config::filter_excluded()` (e/ou no save). Saldo MP fica SEMPRE disponível (constraint do MP). Refletir isso na UI (não deixar excluir saldo, ou avisar). *(Obs.: o 1º teste "só account_money" funcionou; o problema é EXCLUIR account_money.)*
 - [ ] **(B) Retorno mostra erro mas o pagamento COMPLETA** — pagar com saldo: debita, aparece em Payments `completed`, MAS ao voltar pro site (após countdown) mostra "não foi possível concluir o pagamento". URL de retorno tinha `...&status=derror|Erro ao realizar a tentativa de pagamento através do Mercado Pago` mesmo com `collection_status=approved`. external_reference = `jfbmp-87844-...` (PAY NOW, form 87844). Investigar `pay-now-logic.php` `process_after()`/interpretação do retorno + back_urls/`auto_return`. Pode ser específico de `account_money`. **O webhook grava certo; o problema é a tela de RETORNO do navegador.**
 
