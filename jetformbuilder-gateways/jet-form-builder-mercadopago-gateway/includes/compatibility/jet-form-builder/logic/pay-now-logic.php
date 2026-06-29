@@ -49,6 +49,7 @@ namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Logic;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Preference;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Payment;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Pay_Now_Connector;
+use Jet_FB_Mercadopago_Gateway\Payer_Info;
 use Jet_Form_Builder\Actions\Types\Save_Record;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Db_Queries\Execution_Builder;
@@ -134,6 +135,32 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 			'jet-form-builder/form-handler/after-send',
 			array( $this, 'attach_record_id' )
 		);
+
+		// Vincula o pagador (dados do form) ao pagamento — resolve o
+		// "Payer: Not attached" do pay-now, independente de retorno/webhook.
+		add_action(
+			'jet-form-builder/form-handler/after-send',
+			array( $this, 'attach_payer' )
+		);
+	}
+
+	/**
+	 * Liga o pagador (Payer_Model + Payer_Shipping + Payment_To_Payer_Shipping) ao
+	 * pagamento, com os dados que o pagador digitou no FORM (nome, e-mail, CPF,
+	 * telefone, endereço). Roda no submit -> aparece em JFB → Payments mesmo que o
+	 * MP não devolva o nome (sandbox) e mesmo na aba fechada. Best-effort.
+	 *
+	 * @return void
+	 * @throws Repository_Exception
+	 */
+	public function attach_payer() {
+		$payment_id = (int) $this->get_context( 'payment_id' );
+
+		if ( $payment_id <= 0 ) {
+			return;
+		}
+
+		Payer_Info::attach_to_payment( $payment_id, (int) get_current_user_id() );
 	}
 
 	/**
