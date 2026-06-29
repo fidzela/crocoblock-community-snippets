@@ -33,6 +33,15 @@ Observações:
 
 # ChangeLog
 
+## 2.0.34
+* FIX: **Payer info do Pay Now** agora aparece em *JFB → Payments* (resolve o "Payer:
+  Not attached"). O pay-now passa a criar a cadeia `Payer_Model` + `Payer_Shipping` +
+  `Payment_To_Payer_Shipping` com os dados que o **Mercado Pago devolve** (`payment.payer`),
+  no webhook **e** no retorno — paridade com a Assinatura. Não depende mais de campos no
+  formulário (o e-mail/nome do pagador real vem do MP, inclusive no Pix). Os campos do
+  form mapeados (ver tabela acima) continuam sendo enviados ao MP para pré-preencher o
+  checkout e melhorar a aprovação.
+
 ## 2.0.33
 * ADD: Suporte a **Pix/boleto** no Pay Now (Checkout Pro). Quando um formulário aceita
   Pix (não exclui `bank_transfer`) ou boleto (`ticket`), a preference passa a usar

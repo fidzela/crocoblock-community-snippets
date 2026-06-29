@@ -187,50 +187,48 @@ class Payer_Info {
 	}
 
 	/**
-	 * Vincula o pagador (do form) ao pagamento no admin: Payer_Model +
-	 * Payer_Shipping + Payment_To_Payer_Shipping (mesmo encadeamento do Stripe).
-	 * Roda no SUBMIT, então cobre retorno, webhook E aba fechada. Best-effort.
+	 * Vincula o pagador ao pagamento no admin com os dados que o MERCADO PAGO
+	 * devolve (payment.payer) — PARIDADE com a assinatura (recorder): cria
+	 * Payer_Model + Payer_Shipping + Payment_To_Payer_Shipping. É ESSA cadeia que a
+	 * coluna "Payer" de JFB → Payments resolve (sem ela = "Payer: Not attached").
 	 *
-	 * @param int $payment_id Id interno do Payment_Model.
-	 * @param int $user_id
+	 * Os dados que o dono mapeia no FORM já vão ao MP por inject_into_preference e
+	 * VOLTAM aqui no `payer` — então um único ponto (a confirmação) cobre tudo, sem
+	 * depender de campos do form. Em produção o MP devolve e-mail/nome do pagador
+	 * real (inclusive no Pix).
+	 *
+	 * Idempotência prática: só o VENCEDOR da confirmação chega aqui — o retorno do
+	 * navegador OU o webhook (a transição atômica CREATED->COMPLETED serializa).
+	 *
+	 * @param int   $payment_id Id interno do Payment_Model.
+	 * @param int   $user_id
+	 * @param array $mp_payer   O objeto `payer` do payment do MP (email/first_name/last_name/id).
 	 *
 	 * @return void
 	 */
-	public static function attach_to_payment( int $payment_id, int $user_id ) {
-		if ( $payment_id <= 0 ) {
+	public static function attach_from_mp( int $payment_id, int $user_id, array $mp_payer ) {
+		if ( $payment_id <= 0 || empty( $mp_payer['email'] ) ) {
 			return;
 		}
 
-		$d = self::from_request();
-
-		// Sem e-mail não há pagador útil (é a chave do Payer_Model).
-		if ( empty( $d['email'] ) || ! is_email( $d['email'] ) ) {
-			return;
-		}
+		$first = (string) ( $mp_payer['first_name'] ?? '' );
+		$last  = (string) ( $mp_payer['last_name'] ?? '' );
 
 		try {
 			$payer_id = Payer_Model::insert_or_update(
 				array(
 					'user_id'    => $user_id,
-					'payer_id'   => '',
-					'first_name' => $d['first_name'] ?? null,
-					'last_name'  => $d['last_name'] ?? null,
-					'email'      => $d['email'],
+					'payer_id'   => (string) ( $mp_payer['id'] ?? '' ),
+					'first_name' => '' !== $first ? $first : null,
+					'last_name'  => '' !== $last ? $last : null,
+					'email'      => (string) $mp_payer['email'],
 				)
 			);
 
-			$address = self::address_parts( $d );
-
 			$payer_ship_id = ( new Payer_Shipping_Model() )->insert(
 				array(
-					'payer_id'       => $payer_id,
-					'full_name'      => trim( ( $d['first_name'] ?? '' ) . ' ' . ( $d['last_name'] ?? '' ) ),
-					'address_line_1' => $address['street_name'] ?? '',
-					'address_line_2' => isset( $address['street_number'] ) ? (string) $address['street_number'] : '',
-					'admin_area_2'   => $d['city'] ?? '',
-					'admin_area_1'   => $d['state'] ?? '',
-					'postal_code'    => $address['zip_code'] ?? '',
-					'country_code'   => 'BR',
+					'payer_id'  => $payer_id,
+					'full_name' => trim( $first . ' ' . $last ),
 				)
 			);
 
@@ -241,7 +239,7 @@ class Payer_Info {
 				)
 			);
 		} catch ( \Throwable $e ) {
-			// Best-effort: enriquecimento não pode derrubar o pagamento.
+			// Best-effort: o enriquecimento do pagador não pode derrubar a venda.
 			return;
 		}
 	}

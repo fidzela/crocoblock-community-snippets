@@ -40,7 +40,7 @@ use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Subscription_Refun
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 use Jet_FB_Paypal\QueryViews\SubscriptionsView;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
-use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
+use Jet_FB_Mercadopago_Gateway\Payer_Info;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Query_Views\Payment_With_Record_View;
 use WP_REST_Response;
@@ -415,7 +415,10 @@ class PaymentNotification {
 	}
 
 	/**
-	 * Enriquecimento best-effort com os dados do pagador.
+	 * Vincula o pagador ao pagamento (best-effort) com os dados do MP. Cria a cadeia
+	 * Payer_Model + Payer_Shipping + Payment_To_Payer_Shipping — é o que a coluna
+	 * "Payer" de JFB → Payments resolve (sem ela = "Not attached"). Paridade com a
+	 * assinatura (recorder). Confirma o pay-now via WEBHOOK (Pix/aba fechada/saldo).
 	 *
 	 * @param array $payment
 	 * @param array $row
@@ -423,25 +426,11 @@ class PaymentNotification {
 	 * @return void
 	 */
 	private function save_payer( array $payment, array $row ) {
-		$payer = $payment['payer'] ?? array();
-
-		if ( empty( $payer['email'] ) ) {
-			return;
-		}
-
-		try {
-			Payer_Model::insert_or_update(
-				array(
-					'user_id'    => $row['user_id'] ?? 0,
-					'payer_id'   => (string) ( $payer['id'] ?? '' ),
-					'first_name' => $payer['first_name'] ?? null,
-					'last_name'  => $payer['last_name'] ?? null,
-					'email'      => $payer['email'],
-				)
-			);
-		} catch ( \Throwable $e ) {
-			WebhookConfig::log( 'Payer enrichment failed.', array( 'error' => $e->getMessage() ) );
-		}
+		Payer_Info::attach_from_mp(
+			(int) ( $row['id'] ?? 0 ),
+			(int) ( $row['user_id'] ?? 0 ),
+			is_array( $payment['payer'] ?? null ) ? $payment['payer'] : array()
+		);
 	}
 
 	/**

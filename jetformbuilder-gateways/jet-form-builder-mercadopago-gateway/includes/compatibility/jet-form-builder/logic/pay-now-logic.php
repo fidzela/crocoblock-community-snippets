@@ -57,7 +57,6 @@ use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Exceptions\Query_Builder_Exception;
 use Jet_Form_Builder\Exceptions\Repository_Exception;
 use Jet_Form_Builder\Form_Messages\Manager;
-use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_To_Record;
 use Jet_Form_Builder\Gateways\Paypal\Scenarios_Logic\With_Resource_It;
@@ -145,32 +144,6 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 			'jet-form-builder/form-handler/after-send',
 			array( $this, 'attach_record_id' )
 		);
-
-		// Vincula o pagador (dados do form) ao pagamento — resolve o
-		// "Payer: Not attached" do pay-now, independente de retorno/webhook.
-		add_action(
-			'jet-form-builder/form-handler/after-send',
-			array( $this, 'attach_payer' )
-		);
-	}
-
-	/**
-	 * Liga o pagador (Payer_Model + Payer_Shipping + Payment_To_Payer_Shipping) ao
-	 * pagamento, com os dados que o pagador digitou no FORM (nome, e-mail, CPF,
-	 * telefone, endereço). Roda no submit -> aparece em JFB → Payments mesmo que o
-	 * MP não devolva o nome (sandbox) e mesmo na aba fechada. Best-effort.
-	 *
-	 * @return void
-	 * @throws Repository_Exception
-	 */
-	public function attach_payer() {
-		$payment_id = (int) $this->get_context( 'payment_id' );
-
-		if ( $payment_id <= 0 ) {
-			return;
-		}
-
-		Payer_Info::attach_to_payment( $payment_id, (int) get_current_user_id() );
 	}
 
 	/**
@@ -449,20 +422,14 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 			)
 		);
 
-		// Enriquecimento opcional: dados do pagador (estrutura do MP é 'payer').
-		$payer = $payment['payer'] ?? array();
-
-		if ( ! empty( $payer['email'] ) ) {
-			Payer_Model::insert_or_update(
-				array(
-					'user_id'    => $this->get_scenario_row( 'user_id' ),
-					'payer_id'   => (string) ( $payer['id'] ?? '' ),
-					'first_name' => $payer['first_name'] ?? null,
-					'last_name'  => $payer['last_name'] ?? null,
-					'email'      => $payer['email'],
-				)
-			);
-		}
+		// Vincula o pagador (dados do MP) ao pagamento — cria a cadeia
+		// Payer_Model + Payer_Shipping + Payment_To_Payer_Shipping, que é o que a
+		// coluna "Payer" de JFB → Payments resolve (paridade com a assinatura).
+		Payer_Info::attach_from_mp(
+			(int) $this->get_scenario_row( 'id' ),
+			(int) $this->get_scenario_row( 'user_id' ),
+			is_array( $payment['payer'] ?? null ) ? $payment['payer'] : array()
+		);
 	}
 
 	/**
