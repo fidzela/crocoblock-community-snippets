@@ -20,6 +20,7 @@
 - `QA-RESPOSTAS.md` + `QA-CENARIOS.md` — Q&A respondido (idempotência, recuperação, segurança, etc.). Aplique essas regras a features novas.
 - `REFUND-ARCHITECTURE.md` — refund (transaction_id = payment_id real do MP). **Crítico.**
 - `MARCO-ASSINATURA.md`, `MEMORIA-CONTINUACAO.md`, `HANDOFF-FASE-2.md`, `WEBHOOK-SETUP.md`, `SEGURANCA-REVERSAO.md`, `PLANO-MEIOS-PAGAMENTO.md`.
+- **`PLANO-PIX.md`** — plano completo de implementação do Pix (Pay Now), aprovado para executar quando a conta MP estiver com Pix ativo (ver item 2E4). Sem tocar o core; tudo via filtro.
 - Commits do branch (histórico do raciocínio). Rode `git log --oneline -30`.
 
 ## 2. Invariantes da arquitetura (não podem mudar)
