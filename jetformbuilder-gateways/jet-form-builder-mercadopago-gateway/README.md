@@ -33,6 +33,13 @@ Observações:
 
 # ChangeLog
 
+## 2.0.33
+* ADD: Suporte a **Pix/boleto** no Pay Now (Checkout Pro). Quando um formulário aceita
+  Pix (não exclui `bank_transfer`) ou boleto (`ticket`), a preference passa a usar
+  `binary_mode=false` (necessário para meios assíncronos) e o retorno em `pending` mostra
+  "aguardando pagamento" em vez de erro — a venda é confirmada pelo webhook. Forms só-cartão
+  ficam idênticos. Requer Pix ativo na conta Mercado Pago (chave Pix). Sem alterar o core.
+
 ## 2.0.32
 * ADD: Payer info no Pay Now — envia nome/CPF/telefone/endereço do formulário ao Mercado Pago
   (`payer` + `additional_info.payer`) e vincula o pagador ao pagamento no admin (resolve

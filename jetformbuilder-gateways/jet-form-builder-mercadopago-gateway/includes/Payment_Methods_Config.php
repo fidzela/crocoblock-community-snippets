@@ -88,7 +88,25 @@ class Payment_Methods_Config {
 	 * @return array
 	 */
 	public static function filter_excluded( $default, $action = null ): array {
-		$form_id  = self::current_form_id();
+		// Shape do MP: [ ['id'=>'ticket'], ... ].
+		return array_map(
+			static function ( $type ) {
+				return array( 'id' => $type );
+			},
+			self::effective_excluded( self::current_form_id() )
+		);
+	}
+
+	/**
+	 * Lista EFETIVA de tipos excluídos de um form (DEFAULT quando sem config; sempre
+	 * sem os NEVER_EXCLUDE). É a verdade única usada no filtro do MP e nos helpers
+	 * accepts_*.
+	 *
+	 * @param int $form_id
+	 *
+	 * @return array Lista plana de ids de tipo.
+	 */
+	public static function effective_excluded( int $form_id ): array {
 		$excluded = $form_id ? self::get_excluded( $form_id ) : null;
 
 		// SEM config (form novo, ou sem form no contexto) -> DEFAULT do dono = SÓ
@@ -99,15 +117,31 @@ class Payment_Methods_Config {
 
 		// NUNCA excluir os tipos que o MP recusa (account_money), senão o MP rejeita a
 		// preference (HTTP 400 "account_money cannot be excluded") e o pagamento falha.
-		$excluded = array_values( array_diff( $excluded, self::NEVER_EXCLUDE ) );
+		return array_values( array_diff( $excluded, self::NEVER_EXCLUDE ) );
+	}
 
-		// Shape do MP: [ ['id'=>'ticket'], ... ].
-		return array_map(
-			static function ( $type ) {
-				return array( 'id' => $type );
-			},
-			$excluded
-		);
+	/**
+	 * O form ACEITA um tipo de pagamento? (= não está na lista efetiva de excluídos.)
+	 *
+	 * @param int    $form_id
+	 * @param string $type    Ex.: 'bank_transfer' (Pix), 'ticket' (boleto).
+	 *
+	 * @return bool
+	 */
+	public static function accepts_type( int $form_id, string $type ): bool {
+		return ! in_array( $type, self::effective_excluded( $form_id ), true );
+	}
+
+	/**
+	 * O form aceita algum meio ASSÍNCRONO (Pix/boleto)? Esses pagam depois (status
+	 * `pending`), então a preference precisa de `binary_mode=false` — ver Pix_Support.
+	 *
+	 * @param int $form_id
+	 *
+	 * @return bool
+	 */
+	public static function accepts_async( int $form_id ): bool {
+		return self::accepts_type( $form_id, 'bank_transfer' ) || self::accepts_type( $form_id, 'ticket' );
 	}
 
 	/**

@@ -1,9 +1,17 @@
 # 🟢 PLANO DE IMPLEMENTAÇÃO — PIX no Pay Now (Checkout Pro)
 
-> **Status:** PLANO (não implementado). Foco TOTAL no Pix. **Sem alterar o CORE**
-> (`CORE-PLUGINS/**`), **sem mexer na lib Shared** e **sem quebrar** cartão/saldo.
-> A configuração da CONTA Mercado Pago (chave Pix etc.) é feita pelo dono — o
-> passo a passo está na seção 8.
+> **Status:** ✅ **IMPLEMENTADO (v2.0.33)** — código pronto e testado (standalone),
+> **aguardando a conta MP com Pix ativo + o teste real** (seções 7 e 8). Foco TOTAL
+> no Pix. **Sem alterar o CORE** (`CORE-PLUGINS/**`), **sem mexer na lib Shared** e
+> **sem quebrar** cartão/saldo. A configuração da CONTA Mercado Pago (chave Pix etc.)
+> é feita pelo dono — o passo a passo está na seção 8.
+>
+> **Implementado:** C1 `Payment_Methods_Config::accepts_type()/accepts_async()`;
+> C2 `Pix_Support` (binary_mode=false só nos forms que aceitam Pix/boleto, via filtro);
+> C3/C4 `pay-now-logic` trata retorno `pending`/`in_process` como "aguardando" (não
+> erro/void) + mensagem própria, sem re-disparar ações; C5 nota na aba sobre o modo
+> assíncrono. Testes: C1+C2 12/12, C3/C4 6/6. **C6 (validade do QR) ficou de fora**
+> (o MP usa o default; pode entrar depois se necessário).
 
 ---
 

@@ -503,6 +503,10 @@
 							} );
 						} );
 						children.push( h( 'div', { key: 'pm-panel-' + self.pmFormId, staticClass: 'cx-vui-inner-panel jfb-mp-plans__list' }, pmInner ) );
+						// C5: Pix/boleto sao assincronos -> avisa que a venda confirma via webhook.
+						if ( self.pmKept['bank_transfer'] || self.pmKept['ticket'] ) {
+							children.push( h( 'div', { staticClass: 'jfb-mp-plans__hint' }, t.pmAsyncNote || 'Pix e boleto sao assincronos: a venda e confirmada quando o cliente paga (via webhook do Mercado Pago). Confirme que o webhook/notificacoes estao ativos.' ) );
+						}
 						children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
 							button( t.pmSave2 || 'Salvar meios deste formulario', 'accent', { click: self.savePm }, { disabled: self.pmBusy } )
 						] ) );

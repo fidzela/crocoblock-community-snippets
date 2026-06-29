@@ -56,6 +56,7 @@ use Jet_Form_Builder\Db_Queries\Execution_Builder;
 use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Exceptions\Query_Builder_Exception;
 use Jet_Form_Builder\Exceptions\Repository_Exception;
+use Jet_Form_Builder\Form_Messages\Manager;
 use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_To_Record;
@@ -87,6 +88,15 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	 * @var bool
 	 */
 	protected $already_fulfilled = false;
+
+	/**
+	 * Sinaliza que o pagamento é ASSÍNCRONO (Pix/boleto) e ainda está `pending` no
+	 * retorno: a venda será efetivada pelo webhook. Exibimos "aguardando" e NÃO
+	 * disparamos sucesso/erro nem marcamos VOIDED.
+	 *
+	 * @var bool
+	 */
+	protected $awaiting_async = false;
 
 	/**
 	 * Token vindo da URL no retorno.
@@ -298,8 +308,19 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 
 		$status = $payment['status'] ?? '';
 
+		// Pix/boleto (ASSÍNCRONO): o pagador gerou o QR/código mas ainda NÃO pagou.
+		// NÃO é erro nem venda — a linha fica CREATED e o WEBHOOK efetiva a venda
+		// quando o pagamento cair. Exibimos "aguardando pagamento" (ver
+		// get_result_message) em vez de marcar VOIDED. Só ocorre em forms que aceitam
+		// Pix/boleto (binary_mode=false via Pix_Support); cartão/saldo seguem normais.
+		if ( in_array( $status, array( 'pending', 'in_process' ), true ) ) {
+			$this->awaiting_async = true;
+
+			return;
+		}
+
 		if ( 'approved' !== $status ) {
-			// pending / in_process / rejected / cancelled -> não aprovado.
+			// rejected / cancelled -> recusado de fato.
 			$this->on_error(
 				$payment,
 				sprintf(
@@ -332,14 +353,36 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	 * resultado. Sem este guard, pagar com saldo (webhook instantâneo) rodaria as
 	 * ações 2x (e-mail, criar post, webhooks de 3os, etc.).
 	 *
+	 * Idem para Pix/boleto AGUARDANDO (awaiting_async): não disparamos sucesso nem
+	 * falha — a venda só se efetiva quando o webhook confirmar o pagamento.
+	 *
 	 * @param string $type
 	 */
 	public function process_status( $type = 'success' ) {
-		if ( $this->already_fulfilled ) {
+		if ( $this->already_fulfilled || $this->awaiting_async ) {
 			return;
 		}
 
 		parent::process_status( $type );
+	}
+
+	/**
+	 * Mensagem exibida no retorno. Em Pix/boleto AGUARDANDO mostra "pagamento
+	 * gerado, conclua" — nem a de sucesso (não pagou) nem a de erro (não falhou).
+	 * Demais casos seguem o core.
+	 *
+	 * @param string $status
+	 *
+	 * @return string
+	 */
+	public function get_result_message( $status ): string {
+		if ( $this->awaiting_async ) {
+			return Manager::dynamic_success(
+				__( 'Pagamento gerado! Conclua o pagamento (Pix/boleto) para finalizar — a confirmação chega automaticamente.', 'jet-form-builder-mercadopago-gateway' )
+			);
+		}
+
+		return parent::get_result_message( $status );
 	}
 
 	/**

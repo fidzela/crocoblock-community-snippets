@@ -14,6 +14,7 @@ use Jet_FB_Mercadopago_Gateway\Recovery\Reconciler;
 use Jet_FB_Mercadopago_Gateway\Recovery\Pending_Effects;
 use Jet_FB_Mercadopago_Gateway\Payment_Methods_Config;
 use Jet_FB_Mercadopago_Gateway\Payer_Info;
+use Jet_FB_Mercadopago_Gateway\Pix_Support;
 
 // If this file is called directly, abort.
 if ( ! defined( 'WPINC' ) ) {
@@ -89,6 +90,10 @@ class Plugin {
 		// Payer info: injeta os dados do pagador (nome/CPF/telefone/endereço) do form
 		// na preference do Pay Now (filtro que o Create_Preference já dispara).
 		Payer_Info::register();
+
+		// Pix/boleto (assíncrono): baixa o binary_mode da preference SÓ nos forms que
+		// aceitam esses meios (via filtro). Cartão/saldo seguem intactos.
+		Pix_Support::register();
 	}
 
 	/**

@@ -220,6 +220,7 @@ class Plans_Page {
 					'pmChooseFirst' => __( 'Escolha um formulário acima para configurar e sincronizar os meios de pagamento.', 'jet-form-builder-mercadopago-gateway' ),
 					'pmDefaultNote' => __( 'Este formulário ainda não tem meios definidos: por padrão, aceita apenas cartões de crédito (e o saldo Mercado Pago, que não pode ser desativado). Sincronize e salve para personalizar.', 'jet-form-builder-mercadopago-gateway' ),
 					'pmAlwaysOn'    => __( 'Sempre disponível — o Mercado Pago não permite desativar o saldo em conta no Checkout Pro.', 'jet-form-builder-mercadopago-gateway' ),
+					'pmAsyncNote'   => __( 'Pix e boleto são assíncronos: a venda é confirmada quando o cliente paga (via webhook do Mercado Pago). Confirme que o webhook/notificações estão ativos.', 'jet-form-builder-mercadopago-gateway' ),
 				),
 			)
 		);
