@@ -1,0 +1,246 @@
+/**
+ * Mercado Pago Plans — estilos da aba de settings.
+ *
+ * Só o que os componentes nativos cx-vui NÃO cobrem: títulos de seção e as linhas
+ * de plano. Campos, selects, switcher e BOTÕES são 100% cx-vui (sem CSS aqui) — se
+ * o core/JetEngine reestiliza o componente, a aba acompanha automaticamente.
+ *
+ * Cores: os CINZAS de texto/borda são a paleta do WP admin (mesma que o próprio WP
+ * hardcoda — não há variável): separador #ececec · título #23282d/#1d2327 ·
+ * descrição #646970/#7b7e81. Já o vermelho de ERRO usa a VARIÁVEL do cx-vui
+ * (`var(--style-link-error, #b32d2e)`) -> acompanha o tema do cx-vui, com fallback.
+ * Verde de ativo #1a7f37 (sucesso padrão, sem variável cx-vui equivalente).
+ */
+
+.jfb-mp-plans {
+	/* Sem max-width: a aba alarga conforme o container (igual MailChimp/User
+	   Journey). O padding inferior evita o botão "Criar plano" colado na borda. */
+	padding-bottom: 28px;
+}
+
+/* título da página (topo do conteúdo) */
+.jfb-mp-plans__page-title {
+	margin: 0 0 4px;
+	font-size: 18px;
+	line-height: 24px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.jfb-mp-plans__intro {
+	margin: 0 0 4px;
+}
+
+/* título de seção = separador + cabeçalho de "novo bloco". GRANDE (igual ao
+   page-title) para diferenciar de label de campo — antes ficava do mesmo tamanho
+   de "Nome / descrição" e parecia pobre. */
+.jfb-mp-plans__title {
+	margin: 34px 0 16px;
+	padding: 24px 0 0;
+	border-top: 1px solid #ececec;
+	font-size: 18px;
+	line-height: 24px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+/* link "Como funciona?" na intro */
+.jfb-mp-plans__help-link {
+	font-weight: 600;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+/* preview dinâmico do valor formatado conforme a moeda */
+.jfb-mp-plans__amount-preview {
+	margin: -6px 0 14px;
+	font-size: 13px;
+	color: #646970;
+}
+
+.jfb-mp-plans__amount-preview strong {
+	color: #1a7f37;
+}
+
+/* datas do plano (criado/excluído) */
+.jfb-mp-plans__row-dates {
+	margin: 2px 0 4px;
+	font-size: 12px;
+	color: #8c8f94;
+}
+
+.jfb-mp-plans__row.is-cancelled {
+	opacity: 0.72;
+}
+
+/* painel cinza nativo, com padding mais enxuto para uma lista */
+.jfb-mp-plans__list.cx-vui-inner-panel {
+	padding: 14px;
+}
+
+.jfb-mp-plans__empty {
+	padding: 8px 4px;
+	color: #646970;
+	font-size: 13px;
+}
+
+/* separador + respiro apos o seletor de Formulario na secao de meios (E3) */
+.jfb-mp-plans__pm-sep {
+	margin: 18px 0 22px;
+	border-top: 1px solid #ececec;
+}
+
+/* instrucao quando nenhum formulario foi escolhido (sync bloqueado) */
+/* espaco entre o botao Sincronizar e o painel de meios (nao ficarem colados) */
+.jfb-mp-plans__pm-panel {
+	margin-top: 22px;
+}
+
+.jfb-mp-plans__hint {
+	padding: 10px 12px;
+	color: #646970;
+	font-size: 13px;
+	background: #f6f7f7;
+	border-radius: 4px;
+}
+
+/* cada plano = card branco sobre o painel cinza */
+.jfb-mp-plans__row {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 12px 14px;
+	background: #fff;
+	border: 1px solid #ececec;
+	border-radius: 4px;
+}
+
+.jfb-mp-plans__row + .jfb-mp-plans__row {
+	margin-top: 8px;
+}
+
+.jfb-mp-plans__row-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.jfb-mp-plans__row-name {
+	display: block;
+	font-size: 14px;
+	font-weight: 600;
+	color: #23282d;
+}
+
+.jfb-mp-plans__row-meta {
+	margin: 3px 0;
+	font-size: 12px;
+	color: #646970;
+}
+
+.jfb-mp-plans__row-id {
+	font-size: 11px;
+	color: #8c8f94;
+}
+
+.jfb-mp-plans__badge {
+	font-weight: 600;
+}
+
+.jfb-mp-plans__badge.is-active {
+	color: #1a7f37;
+}
+
+.jfb-mp-plans__badge.is-cancelled {
+	color: var( --style-link-error, #b32d2e );
+}
+
+.jfb-mp-plans__actions {
+	margin: 14px 0 0;
+}
+
+.jfb-mp-plans__notice-box {
+	margin: 10px 0;
+	padding: 10px 12px;
+}
+
+.jfb-mp-plans__notice {
+	margin-top: 14px;
+	font-size: 13px;
+}
+
+.jfb-mp-plans__notice.is-error {
+	color: var( --style-link-error, #b32d2e );
+}
+
+.jfb-mp-plans__notice.is-success {
+	color: #1a7f37;
+}
+
+.jfb-mp-plans__notice.is-info {
+	color: #646970;
+}
+
+/* ---- popup de documentação (premium) ---------------------------------- */
+.jfb-mp-plans__modal-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 8vh 16px;
+	background: rgba(29, 35, 39, 0.55);
+	overflow-y: auto;
+}
+
+.jfb-mp-plans__modal {
+	position: relative;
+	width: 100%;
+	max-width: 620px;
+	background: #fff;
+	border-radius: 6px;
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+	padding: 28px 30px 30px;
+}
+
+.jfb-mp-plans__modal .jfb-mp-plans__page-title {
+	margin-top: 0;
+}
+
+.jfb-mp-plans__modal-close {
+	position: absolute;
+	top: 10px;
+	right: 12px;
+	border: 0;
+	background: none;
+	cursor: pointer;
+	font-size: 24px;
+	line-height: 1;
+	color: #646970;
+}
+
+.jfb-mp-plans__modal-close:hover {
+	color: #1d2327;
+}
+
+.jfb-mp-plans__modal-body p {
+	margin: 0 0 12px;
+	font-size: 14px;
+	line-height: 1.55;
+	color: #3c434a;
+}
+
+.jfb-mp-plans__modal-links {
+	margin: 4px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.jfb-mp-plans__modal-links li {
+	margin: 0 0 8px;
+}
+
+.jfb-mp-plans__modal-links a {
+	font-weight: 600;
+	text-decoration: none;
+}

@@ -46,16 +46,17 @@
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Logic;
 
-use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Checkout_Session;
-use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Checkout_Session;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Create_Preference;
+use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Actions\Retrieve_Payment;
 use Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Pay_Now_Connector;
+use Jet_FB_Mercadopago_Gateway\Payer_Info;
 use Jet_Form_Builder\Actions\Types\Save_Record;
 use Jet_Form_Builder\Db_Queries\Exceptions\Sql_Exception;
 use Jet_Form_Builder\Db_Queries\Execution_Builder;
 use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Exceptions\Query_Builder_Exception;
 use Jet_Form_Builder\Exceptions\Repository_Exception;
-use Jet_Form_Builder\Gateways\Db_Models\Payer_Model;
+use Jet_Form_Builder\Form_Messages\Manager;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_Model;
 use Jet_Form_Builder\Gateways\Db_Models\Payment_To_Record;
 use Jet_Form_Builder\Gateways\Paypal\Scenarios_Logic\With_Resource_It;
@@ -76,6 +77,25 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	 * transaction_id salvo (= id da preference).
 	 */
 	const QUERY_VAR = 'preference_id';
+
+	/**
+	 * Sinaliza que o WEBHOOK já efetivou o pagamento (CREATED->COMPLETED) e já
+	 * rodou as ações de sucesso (PaymentFulfillment) ANTES de o cliente voltar do
+	 * checkout. Quando true, o retorno do navegador apenas EXIBE o sucesso — não
+	 * re-dispara o Gateway_Success_Event (evita rodar as ações do form 2x).
+	 *
+	 * @var bool
+	 */
+	protected $already_fulfilled = false;
+
+	/**
+	 * Sinaliza que o pagamento é ASSÍNCRONO (Pix/boleto) e ainda está `pending` no
+	 * retorno: a venda será efetivada pelo webhook. Exibimos "aguardando" e NÃO
+	 * disparamos sucesso/erro nem marcamos VOIDED.
+	 *
+	 * @var bool
+	 */
+	protected $awaiting_async = false;
 
 	/**
 	 * Token vindo da URL no retorno.
@@ -155,7 +175,7 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	public function create_resource() {
 		$controller = jet_fb_gateway_current();
 
-		$request = ( new Create_Checkout_Session() )
+		$request = ( new Create_Preference() )
 			->set_bearer_auth( $controller->current_gateway( 'secret' ) ) // 'secret' = Access Token
 			->set_currency( $controller->current_gateway( 'currency' ) )
 			->set_price( $controller->get_price_var() )                    // BRL real (sem *100)
@@ -210,10 +230,32 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 	/**
 	 * Retorno do checkout: confirma o pagamento de verdade.
 	 *
+	 * CORRIDA WEBHOOK x RETORNO: com account_money (saldo) o pagamento é
+	 * INSTANTÂNEO, então o webhook (PaymentNotification::confirm) efetiva
+	 * CREATED->COMPLETED e roda as ações de sucesso (PaymentFulfillment) ANTES de o
+	 * cliente voltar do countdown do checkout. Nesse caso a linha já está COMPLETED:
+	 * tratamos como SUCESSO (sem re-disparar as ações), em vez de lançar
+	 * "already captured" — que o on_catch do core convertia em 'failed' e exibia
+	 * `status=derror`, mesmo com o pagamento APROVADO e debitado.
+	 *
 	 * @throws Gateway_Exception
 	 */
 	public function process_after() {
-		if ( 'CREATED' !== $this->get_scenario_row( 'status' ) ) {
+		$current_status = $this->get_scenario_row( 'status' );
+
+		// Webhook venceu a corrida e já cumpriu tudo -> só exibir sucesso.
+		if ( 'COMPLETED' === $current_status ) {
+			$this->already_fulfilled = true;
+
+			// Status de sucesso em MEMÓRIA (o banco já está COMPLETED pelo webhook);
+			// dirige get_process_status()/get_result_message() p/ a msg de sucesso.
+			$this->scenario_row( array( 'status' => 'approved' ) );
+
+			return;
+		}
+
+		// VOIDED/REFUNDED/etc.: não há captura a confirmar (comportamento mantido).
+		if ( 'CREATED' !== $current_status ) {
 			throw new Gateway_Exception( 'Payment was already captured' );
 		}
 
@@ -228,7 +270,7 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 		}
 
 		// Fonte de verdade: GET /v1/payments/{id} autenticado.
-		$payment = ( new Retrieve_Checkout_Session() )
+		$payment = ( new Retrieve_Payment() )
 			->set_bearer_auth( jet_fb_gateway_current()->current_gateway( 'secret' ) )
 			->set_path( array( 'id' => $payment_id ) )
 			->send_request();
@@ -239,8 +281,19 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 
 		$status = $payment['status'] ?? '';
 
+		// Pix/boleto (ASSÍNCRONO): o pagador gerou o QR/código mas ainda NÃO pagou.
+		// NÃO é erro nem venda — a linha fica CREATED e o WEBHOOK efetiva a venda
+		// quando o pagamento cair. Exibimos "aguardando pagamento" (ver
+		// get_result_message) em vez de marcar VOIDED. Só ocorre em forms que aceitam
+		// Pix/boleto (binary_mode=false via Pix_Support); cartão/saldo seguem normais.
+		if ( in_array( $status, array( 'pending', 'in_process' ), true ) ) {
+			$this->awaiting_async = true;
+
+			return;
+		}
+
 		if ( 'approved' !== $status ) {
-			// pending / in_process / rejected / cancelled -> não aprovado.
+			// rejected / cancelled -> recusado de fato.
 			$this->on_error(
 				$payment,
 				sprintf(
@@ -263,6 +316,46 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 
 			throw new Gateway_Exception( $exception->getMessage() );
 		}
+	}
+
+	/**
+	 * Executa o evento do status (success/failed) no retorno do navegador.
+	 *
+	 * Quando o webhook já venceu a corrida e disparou o Gateway_Success_Event (via
+	 * PaymentFulfillment), NÃO re-executamos as ações do form — apenas exibimos o
+	 * resultado. Sem este guard, pagar com saldo (webhook instantâneo) rodaria as
+	 * ações 2x (e-mail, criar post, webhooks de 3os, etc.).
+	 *
+	 * Idem para Pix/boleto AGUARDANDO (awaiting_async): não disparamos sucesso nem
+	 * falha — a venda só se efetiva quando o webhook confirmar o pagamento.
+	 *
+	 * @param string $type
+	 */
+	public function process_status( $type = 'success' ) {
+		if ( $this->already_fulfilled || $this->awaiting_async ) {
+			return;
+		}
+
+		parent::process_status( $type );
+	}
+
+	/**
+	 * Mensagem exibida no retorno. Em Pix/boleto AGUARDANDO mostra "pagamento
+	 * gerado, conclua" — nem a de sucesso (não pagou) nem a de erro (não falhou).
+	 * Demais casos seguem o core.
+	 *
+	 * @param string $status
+	 *
+	 * @return string
+	 */
+	public function get_result_message( $status ): string {
+		if ( $this->awaiting_async ) {
+			return Manager::dynamic_success(
+				__( 'Pagamento gerado! Conclua o pagamento (Pix/boleto) para finalizar — a confirmação chega automaticamente.', 'jet-form-builder-mercadopago-gateway' )
+			);
+		}
+
+		return parent::get_result_message( $status );
 	}
 
 	/**
@@ -329,20 +422,14 @@ class Pay_Now_Logic extends Scenario_Logic_Base implements With_Resource_It {
 			)
 		);
 
-		// Enriquecimento opcional: dados do pagador (estrutura do MP é 'payer').
-		$payer = $payment['payer'] ?? array();
-
-		if ( ! empty( $payer['email'] ) ) {
-			Payer_Model::insert_or_update(
-				array(
-					'user_id'    => $this->get_scenario_row( 'user_id' ),
-					'payer_id'   => (string) ( $payer['id'] ?? '' ),
-					'first_name' => $payer['first_name'] ?? null,
-					'last_name'  => $payer['last_name'] ?? null,
-					'email'      => $payer['email'],
-				)
-			);
-		}
+		// Vincula o pagador (dados do MP) ao pagamento — cria a cadeia
+		// Payer_Model + Payer_Shipping + Payment_To_Payer_Shipping, que é o que a
+		// coluna "Payer" de JFB → Payments resolve (paridade com a assinatura).
+		Payer_Info::attach_from_mp(
+			(int) $this->get_scenario_row( 'id' ),
+			(int) $this->get_scenario_row( 'user_id' ),
+			is_array( $payment['payer'] ?? null ) ? $payment['payer'] : array()
+		);
 	}
 
 	/**

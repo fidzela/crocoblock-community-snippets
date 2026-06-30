@@ -275,10 +275,179 @@
 <a name="9"></a>
 ## 9. Decisões em aberto + critérios de aceite
 
-### Decisões (resolver no início da Fase 2)
-- **D1 — Plano:** assinatura **com `preapproval_plan`** (planos reutilizáveis, "Refresh Plans") ou **avulsa** (`auto_recurring` inline, mais simples)? *Recomendação: começar avulsa (mais simples, sem gerenciar planos), e adicionar plano depois.*
-- **D2 — JetEngine compat:** corrigir `jet-engine/manager.php` (stripe_* → mercadopago_*) ou **remover** a compatibilidade com JetEngine Forms se o projeto só usa JetFormBuilder? *Recomendação: confirmar uso; se não usa JetEngine Forms para pagamento, remover reduz superfície de bug.*
-- **D3 — Disparo de sucesso no webhook (pendência da Fase 1):** o hook `do_action('jet-form-builder/mercadopago/payment-approved')` ainda **não dispara** o `Gateway_Success_Event` no pay-now via webhook (só o retorno do navegador dispara). Para Pix (futuro) e aba-fechada, será necessário — o padrão é o `SubscriptionUtils::execute_event_for_subscription` adaptado para pagamento (via `Payment_To_Record`). *Pode entrar como item da Fase 2 ou ficar para o Pix.*
+### Decisões — RESOLVIDAS pelo dono do projeto (2026-06-16)
+
+> Premissa-mãe (do dono): **replicar o que o addon Stripe faz HOJE**, mantendo o
+> pagamento dentro do **CORE** do JetFormBuilder (a row aparece em
+> *JetFormBuilder → Payments* e é acessível por dashboard, listing, queries,
+> Profile Builder, users, relations). "Stripe é Stripe e Mercado Livre é Mercado
+> Livre": onde algo é exclusivo do Stripe, **manter inerte / sem conflito**,
+> documentando no arquivo o porquê de ter sido removido/comentado.
+
+- **D1 — Modelo de assinatura → RESOLVIDA: usar `preapproval_plan` (com plano).**
+  Como o Stripe **NÃO cria** Product/Price em runtime — ele usa **Prices
+  recorrentes pré-existentes**, que o admin escolhe no editor (campo manual
+  `plan_manual` ou via field `plan_field`) e atualiza no botão **"Refresh Plans
+  From Stripe"** (`/v1/prices/search?type=recurring`) — o modelo do Mercado Pago
+  que **mais se assemelha** é a **Preapproval COM Plano** (`preapproval_plan`):
+  o plano é o análogo do "Price recorrente". Isto **sobrepõe** a recomendação
+  antiga ("começar avulsa"): para *replicar o Stripe*, vamos de plano. Bônus: o
+  editor MP **já está scaffoldado** para isto ("Refresh Plans From Mercadopago"
+  + `fetch-mercadopago-plans.php` → `preapproval_plan/search`). Mapa:
+  Stripe `Price (recurring)` → MP `preapproval_plan`;
+  Stripe `Checkout Session(mode=subscription)` → MP `POST /preapproval`
+  (`preapproval_plan_id`) → `init_point`; demais transições por webhook
+  (`subscription_preapproval` / `subscription_authorized_payment`).
+- **D2 — JetEngine compat → RESOLVIDA: NÃO portar; neutralizar e documentar.**
+  O projeto usa **apenas JetFormBuilder**. `jet-engine/manager.php` (caminho
+  JetEngine Forms, com `stripe_*`) deve virar **inerte** (sem conflito), mantendo
+  o arquivo **com um comentário explicando** por que o código foi removido/
+  comentado. Mesma regra para qualquer arquivo que seja exclusivo do Stripe.
+- **D3 — Disparo de sucesso no webhook (pendência da Fase 1) → RESOLVIDA e
+  IMPLEMENTADA nesta sessão.** É a **fundação** da Fase 2. Agora o pay-now
+  dispara o `Gateway_Success_Event` (ações do form) também **via webhook** (aba
+  fechada / Pix futuro), não só no retorno do navegador. Ver "Progresso" abaixo.
+
+### Progresso da Fase 2 (sessão 2026-06-16, branch `claude/sleepy-cray-kgcow0`)
+
+**✅ Etapa 2.0 (parcial) — Blindagem anti-fatal:**
+- `actions/retrieve-price.php` e `actions/expire-checkout-session.php`:
+  `action_endpoint()` agora declara `: string` (casa com o abstract
+  `Base_Action`), eliminando o *Fatal error* de assinatura incompatível no
+  autoload sob PHP 8 (risco #5). Auditadas TODAS as subclasses de `Base_Action`
+  (as demais já estavam corretas).
+
+**✅ D3 — Fulfillment via webhook (a FUNDAÇÃO):**
+- Novo `RestEndpoints/WebhookEvents/PaymentFulfillment.php`: escuta o hook
+  `jet-form-builder/mercadopago/payment-approved` e **re-executa o
+  `Gateway_Success_Event`** fora do contexto de submissão — espelhando
+  `SubscriptionUtils::execute_event_for_subscription`, mas indexado pelo
+  **pagamento** via o core `Record_By_Payment` (tabela `payment_to_record`).
+  Reidrata usuário + form_id + referrer + `Tools::apply_context()` + opções de
+  gateway, roda as ações e `Tools::update_record()`.
+- `PaymentNotification::confirm()` agora faz a transição **CREATED → COMPLETED
+  ATÔMICA** (UPDATE condicional `WHERE id=X AND status='CREATED'`; 0 linhas →
+  `Sql_Exception`). Só o **vencedor** da corrida emite o hook ⇒
+  `Gateway_Success_Event` dispara **no-máximo-uma-vez** por pagamento, fechando o
+  TOCTOU entre webhook e retorno do navegador. (O caminho do navegador **não foi
+  tocado** — não regride o fluxo já validado.)
+- Listener registrado em `Compatibility\Jet_Form_Builder\Manager::__construct()`
+  (carrega em toda requisição, inclusive REST/webhook).
+
+**⚠️ Edge conhecido (não-regressão; pré-existente):** se o **webhook** efetiva
+ANTES do retorno do navegador, o `process_after()` do pay-now vê status ≠
+`CREATED` e cai no `Gateway_Failed_Event` (mensagem de falha ao usuário), embora
+as ações de sucesso já tenham rodado via webhook. Antes desta sessão esse caso
+**nem rodava as ações**; agora roda (uma vez). Refino opcional: sobrescrever
+`process_after()/process_status()` no `pay-now-logic` para tratar "já COMPLETED"
+como sucesso-sem-redisparo. *Fica como follow-up.*
+
+**✅ Erradicação do Stripe (D2) — neutralizações seguras:**
+- `jet-engine/manager.php`: `condition()` agora retorna `false` ⇒ o caminho de
+  compat com **JetEngine Forms** (Stripe-shaped, lê `stripe_*`) NUNCA instancia.
+  Inerte, sem conflito, documentado (decisão D2).
+- `webhook-manager.php`: esvaziado. MP não cria webhook por API
+  (`/v1/webhook_endpoints` é Stripe); a notificação vai por `notification_url` +
+  endpoint REST com `x-signature` (já implementados). `maybe_create_webhook()`
+  vira no-op documentado. Removido `api.stripe.com` de caminho ativo aqui.
+- **Sobra `api.stripe.com` em caminho ATIVO apenas em:** `subscription-suspend.php`
+  (será reescrito p/ MP) e `refund-payment.php` (refund é por ÚLTIMO). Demais
+  ocorrências são **comentários** "guia de port" (aceitável pelo critério).
+
+**🧭 ARQUITETURA DO GERENCIAMENTO (esclarecida — corrige uma leitura anterior
+equivocada de "endpoints órfãos"):**
+O admin monta a URL de Cancel/Suspend via `PayPalCancelSubscription::dynamic_rest_url(
+[ 'gateway' => $record['gateway_id'], 'id' => $id ] )` (ver
+`TableViews/Actions/CancelSubscription` + trait `BaseSubscriptionArgs`). O core
+`Gateway_Endpoint::get_rest_base()` compõe a rota como
+**`(?P<gateway>[\w-]+)/<gateway_rest_base>`**. Logo, `dynamic_rest_url` é
+**gateway-aware**: para uma assinatura do MP a URL resolve em
+**`mercadopago/subscription/cancel/{id}`**. Ou seja, **os endpoints
+gateway-específicos NÃO são órfãos** — basta registrá-los na rota
+`mercadopago/...` que o botão do admin os alcança. É **a mesma mecânica do addon
+Stripe** (`stripe/subscription/cancel/{id}`). A classe `PayPalCancelSubscription`
+serve só como *construtor de URL* compartilhado; quem responde é o endpoint do
+gateways da assinatura. (A `PayPalRestSubscriptionStatus`, hardcoded p/ PayPal,
+**não** é usada pelo MP — usamos endpoints próprios.)
+
+**📌 Fatos confirmados p/ a reescrita de assinaturas (modelo plano / D1):**
+- Chaves do cenário no editor: **`plan_field`** (campo do form cujo valor = id do
+  plano) e **`plan_manual`** (plano escolhido na UI). Os rótulos da view
+  (`subscribe_plan_field` / `subscribe_plan`) são só display. ⇒ usar
+  `get_from_field_or_manual('plan_field','plan_manual')`.
+- ⚠️ O core **NÃO** tem `set_plan_field()/set_plan_from_field()` (só
+  `set_price_field/set_price_from_filed`). O `subscription-logic` atual chama os
+  inexistentes em `set_gateway_data()` ⇒ **fatal se o cenário rodar**. Na
+  reescrita, **remover** essas chamadas e resolver o plano direto.
+- `fetch-mercadopago-plans.php` **já é MP-native** (`GET /preapproval_plan/search`
+  → `{id,key,label}`). Serve ao botão "Refresh Plans From Mercadopago".
+- Resource `Jet_FB_Paypal\Resources\Subscription`: `set_suspended()`,
+  `set_active()`, `set_refunded()`, `update_status_soft($status)`,
+  `update_status($status)`, `get_id()`. Constantes em
+  `Jet_FB_Paypal\Logic\SubscribeNow` (APPROVAL_PENDING/APPROVED/ACTIVE/SUSPENDED/
+  CANCELLED/EXPIRED/REFUNDED). Tipos de pagamento: `Base_Gateway::PAYMENT_TYPE_INITIAL`
+  ('initial') / `PAYMENT_TYPE_RENEWAL` ('renewal').
+- **Vantagem do MP vs Stripe:** o `POST /preapproval` retorna o `id` da assinatura
+  na hora (status `pending` + `init_point`). Dá p/ gravar `billing_id` já na
+  criação (no Stripe o id só vinha pelo webhook `checkout.session.completed`).
+
+**✅ Assinaturas MP-native IMPLEMENTADAS (modelo plano / D1):**
+1. **Criação:** actions `Create_Preapproval` (POST /preapproval),
+   `Retrieve_Preapproval`, `Retrieve_Authorized_Payment`, `Retrieve_Preapproval_Plan`,
+   `Update_Preapproval` (PUT). `subscription-logic.php` reescrito: cria
+   `SubscriptionModel` APPROVAL_PENDING + `RecurringCyclesModel` (lido do plano),
+   POST /preapproval, grava `billing_id` (o MP devolve na hora), redireciona p/
+   `init_point`. `process_after/process_status` vazios (webhook dirige, igual
+   Stripe). Resolve `payer_email` (campo do form → usuário logado → filtro).
+2. **Webhook:** `Dispatcher` roteia 2 tópicos. `PreapprovalNotification`
+   (`subscription_preapproval`) → status (authorized/paused/cancelled, com guard
+   de transição). `AuthorizedPaymentNotification` (`subscription_authorized_payment`)
+   → `Payment_Model` `initial`/`renew` (no CORE) + `SubscriptionToPaymentModel` +
+   dispara `Gateway_Success_Event` / `RenewalPaymentEvent` / `Gateway_Failed_Event`.
+   Idempotente por `transaction_id`. Removidos os 5 handlers dormentes Stripe-shaped.
+3. **Gerenciamento:** `cancel-subscription.php` / `subscription-suspend.php`
+   reescritos p/ MP (rota `mercadopago/subscription/...`, `PUT /preapproval` status,
+   token via `Controller::get_credentials_by_form`). Ligados ao admin pela mecânica
+   gateway-aware (ver acima). Reativação via webhook (igual Stripe).
+
+**⏭️ Falta:**
+- **Refund** (por ÚLTIMO): `refund-payment.php` ainda é Stripe (`POST
+  /v1/refunds`) — único `api.stripe.com` ativo restante. Reescrever p/ `POST
+  /v1/payments/{id}/refunds` **após a discussão de segurança** com o dono
+  (idempotência, fonte-de-verdade via webhook, guard atômico, total×parcial,
+  capability/auditoria).
+- **Editor:** o cenário "Subscription" só aparece com
+  `JFB_MP_SUBSCRIPTIONS_ENABLED=true` (`wp-config`); o seletor de planos
+  ("Refresh Plans From Mercadopago") já está scaffoldado.
+- **Teste sandbox (`TEST-`):** criar assinatura → autorizar → ACTIVE → 1ª cobrança
+  (webhook) → renovação → pausar/cancelar. Ativar os tópicos
+  `subscription_preapproval` + `subscription_authorized_payment` no painel MP.
+
+**✅ Gerenciamento de planos (sessão 2026-06-25):** descoberta-chave — os "Planos"
+do PAINEL do MP **não** aparecem na API; só `preapproval_plan` (criados via API)
+populam o dropdown do cenário Subscription. Pay-now em sandbox também foi
+confirmado funcionando (o problema era setup de conta de teste do MP, não o
+código — a base do dia 16 também recusava). Feito:
+- Endpoints REST: `fetch-mercadopago-plans` (enriquecido c/ reason/amount/freq/
+  status), `create-mercadopago-plan` (POST /preapproval_plan), `delete-mercadopago-plan`
+  (PUT status=cancelled — o MP não APAGA, desativa). Registrados sempre.
+- **Aba "Mercado Pago Plans"** no SPA de settings do JFB (não mais página de menu
+  standalone, que foi removida): `Admin\Plans_Page` enfileira `mp-plans-settings.js`
+  no hook `jet-fb/admin-pages/before-assets/jfb-settings`; o JS registra a aba via
+  o filtro `jet.fb.register.settings-page.tabs` (componente **Vue 2 render-function**,
+  sem build — estilo repeater como os glossários). Frequência e Tipo separados.
+- **SEGURANÇA:** o Access Token NUNCA trafega pelo cliente. Os endpoints usam
+  SEMPRE a chave do gateway server-side (`Mp_Token_Trait` → `Controller::get_credentials`).
+  O editor (dropdown) ainda envia o token do form; a aba não envia nada (cai no global).
+
+**⏭️ Tarefas futuras (pedidas pelo dono):**
+- **Botão "excluir log":** o MP só CANCELA o plano (fica `status=cancelled` na
+  lista). Futuro: opção de sumir/arquivar os cancelados da visão.
+- **Aba de settings "Mercado Pago" extensível:** pensada p/ crescer (ex.: chave
+  Pix e outras configs MP-native). Estruturada p/ isso; não implementar agora.
+- **Refund:** ainda pendente, após a discussão de segurança.
+- **Validar a aba Vue** no SPA real do JFB (não testável aqui): se não renderizar,
+  conferir o shape do tab (`{component, title}`) / versão do Vue.
 
 ### Critérios de aceite (Definition of Done — Fase 2)
 - [ ] `JFB_MP_SUBSCRIPTIONS_ENABLED=true` **ativa sem fatal** e sem quebrar a REST.

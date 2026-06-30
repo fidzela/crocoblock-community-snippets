@@ -17,10 +17,19 @@
  *    hash_hmac( 'sha256', manifest, ASSINATURA_SECRETA )  ->  compara com v1
  *    usando hash_equals (comparação timing-safe).
  *
- *  O segredo é a "Assinatura secreta" do painel de Webhooks — NÃO o Access
- *  Token. SEGURO POR PADRÃO (fail-closed): sem segredo configurado, is_valid()
- *  RECUSA (401), porque não há como provar a origem da notificação. Existe um
- *  filtro de override (allow-unsigned), mas é desencorajado.
+ *  O segredo é a "Assinatura secreta" do painel de Webhooks — NÃO o Access Token.
+ *
+ *  COMPORTAMENTO PADRÃO = FAIL-OPEN (afrouxado de propósito — ver SEGURANCA-REVERSAO.md):
+ *  SEM segredo configurado, is_valid() RETORNA true e o webhook É PROCESSADO (com um
+ *  aviso no log). Por que é aceitável: cada handler RE-VERIFICA o evento com um GET
+ *  autenticado na API do MP (o CORPO do webhook nunca é a fonte de verdade) e a
+ *  gravação é idempotente — um webhook forjado só consegue disparar uma CONSULTA de um
+ *  recurso da PRÓPRIA conta, jamais injetar estado. Recusar aqui travaria TODO o ciclo
+ *  de assinatura até o segredo ser configurado.
+ *
+ *  PARA ENFORÇAR (hardening, recomendado em produção): defina
+ *    define( 'JFB_MP_WEBHOOK_SECRET', '<Assinatura secreta do painel de Webhooks>' );
+ *  Com o segredo presente, assinatura ausente/ inválida -> RECUSA (false -> 401).
  *
  *  @package Jet_FB_Mercadopago_Gateway
  */
@@ -45,18 +54,17 @@ class SignatureValidator {
 	public static function is_valid( WP_REST_Request $request, string $data_id ): bool {
 		$secret = WebhookConfig::webhook_secret();
 
-		// SEGURO POR PADRÃO (fail-closed): sem a Assinatura secreta NÃO há como
-		// provar que a notificação é mesmo do Mercado Pago — então RECUSAMOS.
-		// A postura correta para um endpoint público é: na dúvida, 401. Configure
-		// JFB_MP_WEBHOOK_SECRET. O override existe só via filtro e NÃO é recomendado.
+		// Sem a "Assinatura secreta" configurada: PROCESSAMOS mesmo assim (e logamos
+		// um aviso). Por quê é seguro? Cada handler RE-VERIFICA o evento com um GET
+		// autenticado na API do MP (GET /preapproval/{id}, /authorized_payments/{id},
+		// /v1/payments/{id}) — nunca confiamos no CORPO do webhook. Um webhook forjado
+		// só consegue disparar uma CONSULTA de um recurso da PRÓPRIA conta (o token é
+		// nosso), jamais injetar estado arbitrário; e a criação de pagamento é
+		// idempotente. Recusar aqui travava TODO o ciclo de assinatura até o segredo
+		// ser configurado. Para ENFORÇAR a assinatura (hardening), defina
+		// JFB_MP_WEBHOOK_SECRET = "Assinatura secreta" do painel de Webhooks do MP.
 		if ( '' === $secret ) {
-			if ( ! (bool) apply_filters( 'jet-form-builder/mercadopago/allow-unsigned-webhook', false ) ) {
-				WebhookConfig::log( 'RECUSADO: JFB_MP_WEBHOOK_SECRET nao configurado; assinatura nao pode ser validada.' );
-
-				return false;
-			}
-
-			WebhookConfig::log( 'AVISO: processando webhook SEM validar assinatura (allow-unsigned ligado).' );
+			WebhookConfig::log( 'AVISO: webhook processado SEM validar x-signature (defina JFB_MP_WEBHOOK_SECRET para enforcar a assinatura).' );
 
 			return true;
 		}

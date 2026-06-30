@@ -1,36 +1,16 @@
 <?php
 /**
- * ============================================================================
- *  trait Base_Mercadopago  —  Núcleo do gateway (id, nome, credencial, dinheiro)
- * ============================================================================
+ * trait Base_Mercadopago — núcleo do gateway (id, nome, credencial, valor).
  *
- *  DESTINO (cole por cima):
- *    includes/compatibility/base-mercadopago.php
+ * Notas vivas:
+ *  - get_price()/get_formated_amount(): BRL é decimal real (NÃO multiplica/divide por 100).
+ *  - options_list(): o campo "secret" carrega o Access Token do MP (rótulo "Access
+ *    Token"; as chaves public/secret são mantidas por compat com o JS compilado).
+ *    A opção "Subscription" no dropdown só aparece com JFB_MP_SUBSCRIPTIONS_ENABLED.
+ *  - get_checkout_session()/get_currency()/get_name_payment() existem só para a camada
+ *    de compat JetEngine (inerte); o fluxo do JetFormBuilder não os usa.
  *
- *  PRINCIPAIS MUDANÇAS vs. a versão renomeada do Stripe:
- *  ---------------------------------------------------------------------------
- *   1) get_price()           : NÃO multiplica por 100 (BRL é decimal real).
- *   2) get_formated_amount() : NÃO divide por 100.
- *   3) options_list()        : campo "secret" agora é rotulado "Access Token"
- *                              (o JS compilado já usa as chaves public/secret;
- *                              para não recompilar o Vue, mantemos as chaves e
- *                              só trocamos o rótulo). O usuário cola o
- *                              Access Token do Mercado Pago no campo "secret".
- *                              "public" fica opcional (não usado na fase 1).
- *   4) gateway_type          : só "Pay Now". "Subscription" só aparece se a
- *                              constante JFB_MP_SUBSCRIPTIONS_ENABLED === true
- *                              (mantém o cenário INERTE sem quebrar nada).
- *   5) required_credentials_fields(): declara ['secret'] (o Access Token),
- *                              para o badge de "credencial global válida".
- *
- *  POR QUE MANTER get_checkout_session()/get_currency()/get_name_payment():
- *  ---------------------------------------------------------------------------
- *  A camada de compatibilidade com o JetEngine Forms (legado) usa este trait e
- *  chama esses métodos. Mantemos sua assinatura para o trait continuar válido
- *  mesmo que aquela camada carregue. No fluxo do JetFormBuilder eles NÃO são
- *  usados (o JFB usa a classe Create_Checkout_Session).
- *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility;
@@ -75,7 +55,8 @@ trait Base_Mercadopago {
 			Pay_Now_Logic::scenario_id() => __( 'Pay Now', 'jet-form-builder-mercadopago-gateway' ),
 		);
 
-		// Subscription fica INERTE: só entra no dropdown se ligado explicitamente.
+		// Subscription LIGADO por padrão (JFB_MP_SUBSCRIPTIONS_ENABLED). Defina a
+		// constante como false no wp-config para tirar a opção do dropdown.
 		if ( defined( 'JFB_MP_SUBSCRIPTIONS_ENABLED' ) && JFB_MP_SUBSCRIPTIONS_ENABLED ) {
 			$scenarios[ Subscription_Logic::scenario_id() ] = __( 'Subscription', 'jet-form-builder-mercadopago-gateway' );
 		}

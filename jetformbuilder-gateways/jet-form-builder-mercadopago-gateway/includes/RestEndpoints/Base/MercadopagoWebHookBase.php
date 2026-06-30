@@ -5,6 +5,7 @@ namespace Jet_FB_Mercadopago_Gateway\RestEndpoints\Base;
 use WP_REST_Request;
 use WP_REST_Response;
 use Jet_FB_Mercadopago_Gateway\RestEndpoints\SignatureValidator;
+use Jet_FB_Mercadopago_Gateway\RestEndpoints\WebhookConfig;
 
 abstract class MercadopagoWebHookBase {
 
@@ -33,6 +34,11 @@ abstract class MercadopagoWebHookBase {
 
 		$type    = $this->resolve_type( $body, $query );
 		$data_id = $this->resolve_data_id( $body, $query );
+
+		// Primeiro sinal de diagnóstico: PROVA que o MP chegou no endpoint. Se isto
+		// não aparece no log (WP_DEBUG on), o webhook nem está chegando -> é
+		// notification_url/registro no painel, não código.
+		WebhookConfig::log( 'Webhook recebido', array( 'type' => $type, 'data_id' => $data_id ) );
 
 		// Defesa em profundidade. Sem segredo configurado, is_valid() retorna
 		// true e apenas registra um aviso (o GET autenticado é a fonte de verdade).

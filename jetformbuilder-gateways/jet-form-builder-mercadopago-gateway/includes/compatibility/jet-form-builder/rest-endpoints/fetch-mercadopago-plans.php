@@ -1,49 +1,31 @@
 <?php
 /**
- * ============================================================================
- *  Fetch_Mercadopago_Plans  —  Endpoint REST de "planos" (SUBSCRIPTION/fase 2)
- * ============================================================================
+ * Fetch_Mercadopago_Plans — lista os planos (preapproval_plan) para o editor.
  *
- *  DESTINO (cole por cima):
- *    includes/compatibility/jet-form-builder/rest-endpoints/fetch-mercadopago-plans.php
+ * Alimenta o dropdown "Subscription Plan" do cenário de assinatura (botão "Refresh
+ * Plans From Mercadopago"). Em falha devolve WP_Error com mensagem (token vazio ·
+ * HTTP {code} do MP · conexão), que o JS mostra em vermelho. Em sucesso:
+ * { success, data:[ {id,key,value,label,disabled,...} ] }.
  *
- *  >>> ESTE ERA O BLOQUEADOR Nº 1 (fatal garantido no boot) <<<
- *  ---------------------------------------------------------------------------
- *  O `Rest_Controller::routes()` faz `new Fetch_Mercadopago_Plans()`. O arquivo,
- *  porém, declarava `class Fetch_Stripe_Plans` no namespace `Jet_FB_Mercadopago_Gateway`.
- *  Resultado: ao registrar as rotas (no `rest_api_init`, que dispara em TODA
- *  requisição REST — inclusive wp-admin e o submit do formulário), o autoloader
- *  carregava este arquivo mas NÃO encontrava a classe `Fetch_Mercadopago_Plans`
- *  -> *Fatal error: Class not found*. A API REST inteira quebrava.
+ * Default = só planos ATIVOS (editor); a aba de gestão manda include_cancelled=true.
  *
- *  CORRIGIDO:
- *   - namespace  ...Stripe...  ->  ...Mercadopago...
- *   - class      Fetch_Stripe_Plans  ->  Fetch_Mercadopago_Plans   (casa com o arquivo)
- *   - restaurada a URL comentada em fetch_prices (havia virado bug de runtime:
- *     com a 1ª linha comentada, o array ia como 1º argumento de wp_remote_get).
- *
- *  ESCOPO/COMPORTAMENTO: este endpoint é a tela "Refresh Plans" do cenário de
- *  ASSINATURA. No Mercado Pago não há "plans" do mesmo jeito que no Stripe; isto
- *  é puramente legado/INERTE na fase 1 (cartão, pagamento único). Como o
- *  Rest_Controller agora registra este endpoint apenas quando
- *  JFB_MP_SUBSCRIPTIONS_ENABLED === true, na prática ele NEM é instanciado na
- *  fase 1. O conteúdo abaixo é o original (renomeado) só para o arquivo ser
- *  válido; será reescrito para o MP (Preapproval Plan) quando entrarmos em
- *  assinaturas.
- *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder\Rest_Endpoints;
 
-use Jet_Form_Builder\Exceptions\Gateway_Exception;
 use Jet_Form_Builder\Rest_Api\Rest_Api_Endpoint_Base;
+use WP_Error;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
+
+	use Mp_Token_Trait;
+
+	const ENDPOINT = 'https://api.mercadopago.com/preapproval_plan/search?limit=100';
 
 	public static function get_rest_base() {
 		return 'fetch-mercadopago-plans';
@@ -58,81 +40,176 @@ class Fetch_Mercadopago_Plans extends Rest_Api_Endpoint_Base {
 	}
 
 	public function run_callback( \WP_REST_Request $request ) {
-		$secret        = $request->get_param( 'secret' );
-		$force_refresh = filter_var( $request->get_param( 'force_refresh' ), FILTER_VALIDATE_BOOLEAN );
+		// Editor (dropdown) manda o token do form; a aba admin NÃO manda nada ->
+		// cai no token global do gateway (server-side).
+		$client = trim( (string) $request->get_param( 'secret' ) );
+		$secret = '' !== $client ? $client : $this->gateway_token();
+		$force  = filter_var( $request->get_param( 'force_refresh' ), FILTER_VALIDATE_BOOLEAN );
 
-		if ( empty( $secret ) ) {
-			throw new Gateway_Exception( 'Access token is required', $secret );
+		// UI/UX: por padrão devolvemos só os planos ATIVOS (o dropdown do editor não
+		// deve listar planos cancelados/excluídos — não há como recriá-los). A ABA de
+		// settings manda include_cancelled=true para gerir/exibir status (com o switcher
+		// "mostrar excluídos"). O cache guarda a lista COMPLETA; o filtro é na resposta.
+		$include_cancelled = filter_var( $request->get_param( 'include_cancelled' ), FILTER_VALIDATE_BOOLEAN );
+
+		if ( '' === $secret ) {
+			return new WP_Error(
+				'mp_no_token',
+				__( 'Access Token não configurado no gateway (JetFormBuilder → Settings → Payments Gateways → Mercado Pago).', 'jet-form-builder-mercadopago-gateway' ),
+				array( 'status' => 400 )
+			);
 		}
 
-		$data = $this->get_cached_plans( $secret, $force_refresh );
-
-		return rest_ensure_response(
-			array(
-				'success' => true,
-				'data'    => $data,
-			)
-		);
-	}
-
-	private function get_cached_plans( string $secret, bool $force_refresh = false ): array {
 		$cache_key = 'jet_fb_mercadopago_plans_' . md5( $secret );
 
-		if ( ! $force_refresh ) {
+		if ( ! $force ) {
 			$cached = get_transient( $cache_key );
-			if ( false !== $cached ) {
-				return $cached;
+			if ( is_array( $cached ) ) {
+				return rest_ensure_response(
+					array( 'success' => true, 'data' => $this->only_active( $cached, $include_cancelled ) )
+				);
 			}
 		}
 
-		$prices   = $this->fetch_prices( $secret );
-		$products = $this->fetch_products( $secret );
-
-		$data = $this->map_prices_with_products( $prices, $products );
-
-		set_transient( $cache_key, $data, WEEK_IN_SECONDS );
-
-		return $data;
-	}
-
-	private function fetch_prices( string $secret ): array {
-		// NOTE (fase 2): trocar por endpoint de planos do Mercado Pago
-		// (POST/GET /preapproval_plan). Mantido inerte na fase 1.
 		$response = wp_remote_get(
-			'https://api.mercadopago.com/preapproval_plan/search',
+			self::ENDPOINT,
 			array(
-				'headers' => array( 'Authorization' => 'Bearer ' . $secret ),
-				'timeout' => 15,
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $secret,
+					'Accept'        => 'application/json',
+				),
+				'timeout' => 20,
 			)
 		);
 
 		if ( is_wp_error( $response ) ) {
-			throw new Gateway_Exception( $response->get_error_message(), $response );
+			return new WP_Error(
+				'mp_connection',
+				sprintf(
+					/* translators: %s: error message */
+					__( 'Falha de conexão com o Mercado Pago: %s', 'jet-form-builder-mercadopago-gateway' ),
+					$response->get_error_message()
+				),
+				array( 'status' => 502 )
+			);
 		}
 
-		$body = json_decode( wp_remote_retrieve_body( $response ) );
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 
-		if ( empty( $body->results ) ) {
-			return array();
+		if ( $code < 200 || $code >= 300 ) {
+			$mp_msg = is_array( $body ) ? (string) ( $body['message'] ?? '' ) : '';
+
+			return new WP_Error(
+				'mp_http_error',
+				sprintf(
+					/* translators: 1: HTTP code, 2: Mercado Pago message */
+					__( 'O Mercado Pago recusou a busca de planos (HTTP %1$d). %2$s', 'jet-form-builder-mercadopago-gateway' ),
+					$code,
+					$mp_msg
+				),
+				array( 'status' => 400 )
+			);
 		}
 
-		return $body->results;
+		$results = ( is_array( $body ) && is_array( $body['results'] ?? null ) ) ? $body['results'] : array();
+		$data    = $this->map_plans( $results );
+
+		// Cacheia a lista COMPLETA (ativos + cancelados); o filtro de visibilidade é
+		// aplicado na resposta conforme o consumidor (editor vs aba settings).
+		set_transient( $cache_key, $data, WEEK_IN_SECONDS );
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'data'    => $this->only_active( $data, $include_cancelled ),
+			)
+		);
 	}
 
-	private function fetch_products( string $secret ): array {
-		// Inerte na fase 1 (MP não tem o conceito "products" do Stripe).
-		return array();
+	/**
+	 * Mantém apenas planos ativos, a menos que o chamador peça os cancelados.
+	 * "Ativo" = flag `disabled` falsa (status vazio ou 'active'); ver map_plans().
+	 *
+	 * @param array $data              Lista mapeada (completa).
+	 * @param bool  $include_cancelled Se true, devolve tudo (aba de gestão).
+	 *
+	 * @return array
+	 */
+	private function only_active( array $data, bool $include_cancelled ): array {
+		if ( $include_cancelled ) {
+			return $data;
+		}
+
+		return array_values(
+			array_filter(
+				$data,
+				static function ( $plan ) {
+					return empty( $plan['disabled'] );
+				}
+			)
+		);
 	}
 
-	private function map_prices_with_products( array $prices, array $products ): array {
+	/**
+	 * Mapeia os planos do MP para o formato do dropdown.
+	 *
+	 * @param array $results
+	 *
+	 * @return array
+	 */
+	private function map_plans( array $results ): array {
 		$data = array();
 
-		foreach ( $prices as $price ) {
+		foreach ( $results as $plan ) {
+			if ( ! is_array( $plan ) ) {
+				continue;
+			}
+
+			$id = (string) ( $plan['id'] ?? '' );
+
+			if ( '' === $id ) {
+				continue;
+			}
+
+			$auto           = is_array( $plan['auto_recurring'] ?? null ) ? $plan['auto_recurring'] : array();
+			$amount         = isset( $auto['transaction_amount'] ) ? (float) $auto['transaction_amount'] : null;
+			$currency       = (string) ( $auto['currency_id'] ?? 'BRL' );
+			$frequency      = isset( $auto['frequency'] ) ? (int) $auto['frequency'] : null;
+			$frequency_type = (string) ( $auto['frequency_type'] ?? '' );
+			$status         = (string) ( $plan['status'] ?? '' );
+			$reason         = (string) ( $plan['reason'] ?? $id );
+			// Datas do MP (ISO 8601). date_created = criação; last_modified vira a
+			// "data de exclusão" quando o plano foi cancelado (desativado pelo dono).
+			$date_created   = (string) ( $plan['date_created'] ?? '' );
+			$last_modified  = (string) ( $plan['last_modified'] ?? '' );
+
+			$label = $reason;
+
+			if ( null !== $amount ) {
+				$freq   = ( $frequency && $frequency_type ) ? ' /' . $frequency . ' ' . $frequency_type : '';
+				$label .= ' — ' . $currency . ' ' . number_format( $amount, 2, ',', '.' ) . $freq;
+			}
+
+			if ( '' !== $status && 'active' !== $status ) {
+				$label .= ' [' . $status . ']';
+			}
+
 			$data[] = array(
-				'id'       => $price->id ?? '',
-				'key'      => $price->id ?? '',
-				'label'    => $price->reason ?? ( $price->id ?? '' ),
-				'disabled' => false,
+				'id'             => $id,
+				'key'            => $id,
+				'value'          => $id,
+				'label'          => $label,
+				'disabled'       => ( '' !== $status && 'active' !== $status ),
+				// Dados crus p/ a página admin "MP Planos" (o dropdown ignora estes):
+				'reason'         => $reason,
+				'amount'         => $amount,
+				'currency'       => $currency,
+				'frequency'      => $frequency,
+				'frequency_type' => $frequency_type,
+				'status'         => $status,
+				'date_created'   => $date_created,
+				'last_modified'  => $last_modified,
 			);
 		}
 

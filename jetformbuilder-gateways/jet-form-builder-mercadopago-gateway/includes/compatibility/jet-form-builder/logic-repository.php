@@ -1,25 +1,10 @@
 <?php
 /**
- * ============================================================================
- *  Logic_Repository  —  Lista de cenários (lógica) do gateway
- * ============================================================================
+ * Logic_Repository — cenários (lógica) do gateway. Pay_Now_Logic sempre;
+ * Subscription_Logic só com JFB_MP_SUBSCRIPTIONS_ENABLED (default true; defina como
+ * false no wp-config para desligar). Sem o registro aqui o cenário não resolve no submit.
  *
- *  DESTINO (cole por cima):
- *    includes/compatibility/jet-form-builder/logic-repository.php
- *
- *  AQUI É O "INTERRUPTOR" DO SUBSCRIPTION (ativo-mas-inerte):
- *  ---------------------------------------------------------------------------
- *  O cenário só roda se estiver LISTADO em rep_instances(). A classe
- *  Subscription_Logic continua no disco (autoloader feliz, sem fatal), mas só
- *  é registrada se JFB_MP_SUBSCRIPTIONS_ENABLED === true. Por padrão fica de
- *  fora -> o "Subscription" não aparece no editor e nunca é invocado ->
- *  impossível dar erro por causa dele.
- *
- *  Para LIGAR no futuro: defina no arquivo principal do plugin
- *      define( 'JFB_MP_SUBSCRIPTIONS_ENABLED', true );
- *  (e implemente a lógica de Preapproval do Mercado Pago no Subscription_Logic).
- *
- *  @package Jet_FB_Mercadopago_Gateway
+ * @package Jet_FB_Mercadopago_Gateway
  */
 
 namespace Jet_FB_Mercadopago_Gateway\Compatibility\Jet_Form_Builder;
