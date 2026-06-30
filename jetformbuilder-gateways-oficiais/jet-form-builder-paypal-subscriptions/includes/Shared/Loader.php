@@ -97,10 +97,18 @@ if ( ! class_exists( __NAMESPACE__ . '\\Loader', false ) ) {
 
 /**
  * Register *this* on-disk copy.
- * Bump the version below with each release of your shared library.
+ *
+ * VERSÃO > 1.0.0 DE PROPÓSITO: a lib Shared é compartilhada em runtime e o Loader
+ * carrega a cópia de MAIOR versão para TODOS os gateways. Outros addons (ex.: PayPal
+ * subscriptions) registram '1.0.0'; em empate, a ordem de carga decide — e a nossa
+ * (com a formatação Money em GrossColumn/BillingCycleColumn) perdia. Subindo a versão,
+ * a NOSSA cópia é a selecionada. É seguro: as cópias são estruturalmente idênticas e
+ * as nossas modificações são CONDICIONAIS ao gateway 'mercadopago' (PayPal/Stripe
+ * caem no comportamento original). Se um outro addon subir a versão da lib acima
+ * desta, reavalie/realinhe este número.
  */
 Loader::register(
-	'1.0.0',
+	'1.0.1',
 	__DIR__,
 	static function ( string $dir ): void {
 		// --- Tiny PSR-4 autoloader for the *selected* version only. ---

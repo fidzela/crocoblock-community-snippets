@@ -17,7 +17,11 @@ if ( ! defined( 'WPINC' ) ) {
 	die();
 }
 
+<<<<<<< HEAD:jet-form-builder-mercadopago-gateway/jet-form-builder-mercadopago-gateway.php
 define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.36' );
+=======
+define( 'JET_FB_MERCADOPAGO_GATEWAY_VERSION', '2.0.35' );
+>>>>>>> b2585ba2d8bdbd21f611c99d9447393b76678ddd:jetformbuilder-gateways/jet-form-builder-mercadopago-gateway/jet-form-builder-mercadopago-gateway.php
 
 define( 'JET_FB_MERCADOPAGO_GATEWAY__FILE__', __FILE__ );
 define( 'JET_FB_MERCADOPAGO_GATEWAY_PLUGIN_BASE', plugin_basename( __FILE__ ) );
