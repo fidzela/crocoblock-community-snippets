@@ -33,6 +33,17 @@ Observações:
 
 # ChangeLog
 
+## 2.0.36
+* FIX: a coluna/ficha **"Billing Cycle"** das assinaturas mostrava sempre "(1)" e sem a
+  unidade (ex.: "R$ 23,57 / (1)"), independente do ciclo do plano. Agora exibe a
+  **frequência real** do plano — "R$ 23,57 / 3 meses", "/ mês", "/ 7 dias" — em todas as
+  visualizações (tabela de Subscriptions e ficha individual, que usam a mesma coluna).
+  Causa: o formato usava `total_cycles` (fixo em 1) + uma unidade no formato do PayPal
+  (`month`), enquanto o Mercado Pago usa `frequency`/`frequency_type` (`months`/`days`); a
+  exibição passou a usar `interval_count` + a unidade do MP. O fluxo de cobrança já estava
+  correto (a criação do plano, a preapproval e a cobrança usam `frequency`/`frequency_type`
+  do plano) — era só a exibição. Isolado ao gateway; PayPal/Stripe inalterados.
+
 ## 2.0.35
 * ADD: a coluna "Payer" da tabela *JFB → Payments* mostra o **e-mail** do pagador quando
   não há nome (test users, ou quando o Mercado Pago não devolve o nome) — antes ficava
