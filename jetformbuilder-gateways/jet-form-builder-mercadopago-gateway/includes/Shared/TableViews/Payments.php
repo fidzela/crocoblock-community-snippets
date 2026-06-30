@@ -12,13 +12,13 @@ use Jet_FB_Paypal\TableViews\Columns\PaymentRowActions;
 use Jet_FB_Paypal\TableViews\Columns\PaymentRowActionsLegacy;
 use Jet_FB_Paypal\TableViews\Columns\PaymentStatusColumn;
 use Jet_FB_Paypal\TableViews\Columns\PaymentTypeColumn;
+use Jet_FB_Paypal\TableViews\Columns\PayerColumn;
 use Jet_FB_Paypal\TableViews\Columns\SubscriptionColumn;
 use Jet_Form_Builder\Admin\Table_Views\Column_Base;
 use Jet_Form_Builder\Admin\Table_Views\Columns\Created_At_Column;
 use Jet_Form_Builder\Admin\Table_Views\Columns\Record_Id_Column_Advanced;
 use Jet_Form_Builder\Exceptions\Query_Builder_Exception;
 use Jet_Form_Builder\Gateways\Table_Views\Actions\Delete_Action;
-use Jet_Form_Builder\Gateways\Table_Views\Columns\Payer_Column;
 
 class Payments extends \Jet_Form_Builder\Gateways\Table_Views\Payments {
 
@@ -46,7 +46,7 @@ class Payments extends \Jet_Form_Builder\Gateways\Table_Views\Payments {
 			'date'               => new Created_At_Column(),
 			'status'             => new PaymentStatusColumn(),
 			'gross'              => new GrossColumn(),
-			'payer'              => new Payer_Column(),
+			'payer'              => new PayerColumn(),
 			'related_id'         => new SubscriptionColumn(),
 			'id'                 => new Record_Id_Column_Advanced(),
 			'refund'             => new RefundOptionsColumn(),

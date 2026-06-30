@@ -33,6 +33,16 @@ Observações:
 
 # ChangeLog
 
+## 2.0.35
+* ADD: a coluna "Payer" da tabela *JFB → Payments* mostra o **e-mail** do pagador quando
+  não há nome (test users, ou quando o Mercado Pago não devolve o nome) — antes ficava
+  "Not attached" mesmo com o pagador vinculado.
+* UX: botão renomeado para **"Sincronizar meios de pagamento"** + espaçamento entre o
+  botão e a lista de meios na aba MercadoPago Settings.
+* CHORE: limpeza/organização para a versão estável — remoção de **código morto** (cliente
+  de API legado do JetEngine, jamais usado pelo JetFormBuilder) e consolidação de um
+  helper interno de contexto do formulário (`FormContext`). Sem mudança de comportamento.
+
 ## 2.0.34
 * FIX: **Payer info do Pay Now** agora aparece em *JFB → Payments* (resolve o "Payer:
   Not attached"). O pay-now passa a criar a cadeia `Payer_Model` + `Payer_Shipping` +

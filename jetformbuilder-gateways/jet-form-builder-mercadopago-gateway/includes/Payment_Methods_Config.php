@@ -93,7 +93,7 @@ class Payment_Methods_Config {
 			static function ( $type ) {
 				return array( 'id' => $type );
 			},
-			self::effective_excluded( self::current_form_id() )
+			self::effective_excluded( FormContext::current_form_id() )
 		);
 	}
 
@@ -142,21 +142,6 @@ class Payment_Methods_Config {
 	 */
 	public static function accepts_async( int $form_id ): bool {
 		return self::accepts_type( $form_id, 'bank_transfer' ) || self::accepts_type( $form_id, 'ticket' );
-	}
-
-	/**
-	 * Id do formulário em submissão (best-effort).
-	 *
-	 * @return int
-	 */
-	private static function current_form_id(): int {
-		if ( ! function_exists( 'jet_fb_handler' ) ) {
-			return 0;
-		}
-
-		$handler = jet_fb_handler();
-
-		return ( $handler && isset( $handler->form_id ) ) ? (int) $handler->form_id : 0;
 	}
 
 	/**

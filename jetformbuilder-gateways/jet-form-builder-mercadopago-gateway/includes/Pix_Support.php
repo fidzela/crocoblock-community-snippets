@@ -59,7 +59,7 @@ class Pix_Support {
 	 * @return array
 	 */
 	public static function filter_preference( array $preference, $action = null ): array {
-		$form_id = self::current_form_id();
+		$form_id = FormContext::current_form_id();
 
 		// Form só-cartão/saldo -> mantém o binary_mode atual (true). Nada muda.
 		if ( ! $form_id || ! Payment_Methods_Config::accepts_async( $form_id ) ) {
@@ -70,20 +70,5 @@ class Pix_Support {
 		$preference['binary_mode'] = false;
 
 		return apply_filters( 'jet-form-builder/mercadopago/pix-preference', $preference, $form_id );
-	}
-
-	/**
-	 * Id do formulário em submissão (best-effort).
-	 *
-	 * @return int
-	 */
-	private static function current_form_id(): int {
-		if ( ! function_exists( 'jet_fb_handler' ) ) {
-			return 0;
-		}
-
-		$handler = jet_fb_handler();
-
-		return ( $handler && isset( $handler->form_id ) ) ? (int) $handler->form_id : 0;
 	}
 }

@@ -482,7 +482,7 @@
 
 				// botao SYNC dos meios da conta
 				children.push( h( 'div', { staticClass: 'jfb-mp-plans__actions' }, [
-					button( t.pmSync || 'Sincronizar meios do Mercado Pago', 'accent-border', { click: self.syncPm }, { disabled: self.pmLoading } )
+					button( t.pmSync || 'Sincronizar meios de pagamento', 'accent-border', { click: self.syncPm }, { disabled: self.pmLoading } )
 				] ) );
 
 				// switchers 'manter ativo' + salvar -- so apos SYNC
@@ -502,7 +502,7 @@
 								on: { input: function ( val ) { self.togglePm( tp.id, val ); } }
 							} );
 						} );
-						children.push( h( 'div', { key: 'pm-panel-' + self.pmFormId, staticClass: 'cx-vui-inner-panel jfb-mp-plans__list' }, pmInner ) );
+						children.push( h( 'div', { key: 'pm-panel-' + self.pmFormId, staticClass: 'cx-vui-inner-panel jfb-mp-plans__list jfb-mp-plans__pm-panel' }, pmInner ) );
 						// C5: Pix/boleto sao assincronos -> avisa que a venda confirma via webhook.
 						if ( self.pmKept['bank_transfer'] || self.pmKept['ticket'] ) {
 							children.push( h( 'div', { staticClass: 'jfb-mp-plans__hint' }, t.pmAsyncNote || 'Pix e boleto sao assincronos: a venda e confirmada quando o cliente paga (via webhook do Mercado Pago). Confirme que o webhook/notificacoes estao ativos.' ) );

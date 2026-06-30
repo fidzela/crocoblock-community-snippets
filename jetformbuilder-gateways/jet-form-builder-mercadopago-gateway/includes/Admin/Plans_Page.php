@@ -208,7 +208,7 @@ class Plans_Page {
 					'pmTitle'       => __( 'Meios de pagamento (Pay Now)', 'jet-form-builder-mercadopago-gateway' ),
 					'pmIntro'       => __( 'Escolha, por FORMULÁRIO, quais meios o Checkout Pro aceita no Pay Now (ex.: só Pix, ou cartões + Pix, ou excluir boleto). Sincronize os meios da sua conta, selecione um formulário e deixe ATIVOS os que devem aparecer — o restante é excluído. Vale só para Pay Now; assinaturas são sempre cartão de crédito (recorrência).', 'jet-form-builder-mercadopago-gateway' ),
 					'pmForm'        => __( 'Formulário', 'jet-form-builder-mercadopago-gateway' ),
-					'pmSync'        => __( 'Sincronizar meios do Mercado Pago', 'jet-form-builder-mercadopago-gateway' ),
+					'pmSync'        => __( 'Sincronizar meios de pagamento', 'jet-form-builder-mercadopago-gateway' ),
 					'pmSynced'      => __( 'Meios sincronizados', 'jet-form-builder-mercadopago-gateway' ),
 					'pmSave2'       => __( 'Salvar meios deste formulário', 'jet-form-builder-mercadopago-gateway' ),
 					'pmSaved'       => __( 'Meios de pagamento salvos!', 'jet-form-builder-mercadopago-gateway' ),

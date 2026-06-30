@@ -91,6 +91,11 @@
 }
 
 /* instrucao quando nenhum formulario foi escolhido (sync bloqueado) */
+/* espaco entre o botao Sincronizar e o painel de meios (nao ficarem colados) */
+.jfb-mp-plans__pm-panel {
+	margin-top: 22px;
+}
+
 .jfb-mp-plans__hint {
 	padding: 10px 12px;
 	color: #646970;
