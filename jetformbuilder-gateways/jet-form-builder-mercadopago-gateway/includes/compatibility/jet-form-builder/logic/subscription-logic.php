@@ -259,7 +259,10 @@ class Subscription_Logic extends Scenario_Logic_Base implements With_Resource_It
 			( new RecurringCyclesModel() )->insert(
 				array(
 					'subscription_id' => $subscription_id,
-					'quantity'        => 1,
+					// total de cobranças: 0 = assinatura CONTÍNUA (o plano MP não define
+					// repetições). A frequência ("a cada N") fica em interval_count; a
+					// exibição (BillingCycleColumn) usa interval_count, não o quantity.
+					'quantity'        => 0,
 					'interval_unit'   => $auto['frequency_type'] ?? 'months',
 					'interval_count'  => (int) ( $auto['frequency'] ?? 1 ),
 					'currency'        => $auto['currency_id'] ?? 'BRL',
