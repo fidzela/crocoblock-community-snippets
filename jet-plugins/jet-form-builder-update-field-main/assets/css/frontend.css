@@ -1,8 +1,0 @@
-.jfb-updated-field {
-	opacity: 0.6;
-	pointer-events: none;
-}
-
-[data-update-field-is-empty="true"] .jet-form-builder__fields-group {
-	display: none;
-}
